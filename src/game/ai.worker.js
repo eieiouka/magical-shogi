@@ -19,12 +19,12 @@ self.onmessage=({data})=>{
   if(data.type==="reset"){sharedTT.clear();deepestPonder=1;return}
   if(data.type==="ponder"){
     deepestPonder=1;
-    const startDepth=isTryCritical(data.state)?9:7;
+    const startDepth=isTryCritical(data.state)?11:7;
     setTimeout(()=>ponder(data.state,data.seen,token,startDepth),0);
     return
   }
   try{
-    const targetDepth=Math.max(isTryCritical(data.state)?9:7,deepestPonder);
+    const targetDepth=Math.max(isTryCritical(data.state)?11:7,deepestPonder);
     const result=bestAction(data.state,data.seen,targetDepth,{timeLimitMs:10000,minDepth:5,tt:sharedTT});
     self.postMessage({id:data.id,result});
   }catch(error){self.postMessage({id:data.id,error:error?.message||String(error)})}
