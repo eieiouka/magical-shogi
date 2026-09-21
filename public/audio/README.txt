@@ -13,7 +13,7 @@ checkmate-gote.mp3   詰んだ後手エマ
 
 着手ボイス（ファイルを置けば自動再生）
 ファイル名: 種類-キャラ-陣営.mp3
-種類: drop（打つ） / move（通常移動） / promote（成る） / magic（魔法使用）
+種類: check（王手） / drop（打つ） / move（通常移動） / promote（成る） / magic（魔法使用）
 キャラ: sherry / hanna / hiro / nanoka / margo
 陣営: sente / gote
 
@@ -22,8 +22,12 @@ drop-sherry-sente.mp3    先手がシェリーを打つ
 move-hanna-gote.mp3      後手ハンナが通常移動
 promote-hiro-sente.mp3   先手ヒロが成る
 magic-nanoka-gote.mp3    後手ナノカが魔法を使用
+check-margo-sente.mp3    先手マーゴの着手で王手
+check-margo-gote.mp3     後手マーゴの着手で王手
 
-同じ着手で条件が重なる場合は magic > promote > move の順で1本だけ再生します。
+同じ着手で条件が重なる場合は check > magic > promote > move の順で1本だけ再生します。
+王手ボイスは、詰み・トライではない王手で再生します。
+エマ同士では王手が成立しないため、check-ema の音声はありません。
 drop は他の種類と複合しません。
 
 エマは既存の勝敗演出ボイスに加え、通常移動だけを追加してください。

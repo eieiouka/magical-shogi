@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import "./App.css";
-import {PIECES,makeInitialState,generateAllLegalActions,applyLegalAction,terminalResult} from "./game/rules.js";
+import {PIECES,makeInitialState,generateAllLegalActions,applyLegalAction,terminalResult,isEmmaInCheck} from "./game/rules.js";
 import {stateKey} from "./game/aiEngine.js";
 
 const HUMAN_SIDE="sente";
@@ -9,7 +9,8 @@ const HAND_ORDER=["sherry","hanna","hiro","nanoka","margo"];
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 const voiceFor=(event,side)=>`/audio/${event}-${side}.mp3`;
 const playVoice=(event,side)=>{const audio=new Audio(voiceFor(event,side));audio.play().catch(()=>{})};
-const actionVoiceFor=(action,piece)=>{
+const actionVoiceFor=(action,piece,givesCheck=false)=>{
+ if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return`drop-${piece.type}`;
  if(action.magic)return`magic-${piece.type}`;
  if(action.promote)return`promote-${piece.type}`;
@@ -48,6 +49,7 @@ export default function App(){
  const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
+ const checkedSide=!result&&isEmmaInCheck(state,state.turn)?state.turn:null;
  const gameOver=Boolean(result||resigned);
  const canRematch=Boolean(resigned||(result&&finishFxDone));
  const seen=useMemo(()=>timeline.map(stateKey),[timeline]);
@@ -64,10 +66,10 @@ export default function App(){
    setFinishFx({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
    playVoice("try",result.winner);
    timers.push(setTimeout(()=>setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current),600));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide});playVoice("arrow",result.winner)},2600));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide});playVoice("checkmate",losingSide)},4000));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide});playVoice("fall",losingSide)},5400));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true)},6900));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});playVoice("arrow",result.winner)},2600));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});playVoice("checkmate",losingSide)},4000));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});playVoice("fall",losingSide)},5400));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true)},6900));
   }else{
    setFinishFx({phase:"loser-shake",winner:result.winner,losingSide});
    playVoice("checkmate",losingSide);
@@ -81,16 +83,23 @@ export default function App(){
   if(state.turn===HUMAN_SIDE){worker.current.postMessage({type:"ponder",state,seen});return}
   setThinking(true);
   const id=++request.current;
+  const effectEndsAt=Math.max(performance.now(),motionFxRef.current?.endsAt??0);
+  const earliestCommitAt=effectEndsAt+1000;
   worker.current.onmessage=({data})=>{
    if(data.id!==id)return;
    setThinking(false);
    if(data.error||!data.result)return;
    const commit=()=>{beginMotion(data.result.action,state);setTimeline(x=>[...x,applyLegalAction(x[x.length-1],data.result.action)])};
-   const waitForFx=()=>motionFxRef.current?setTimeout(waitForFx,40):commit();
+   const waitForFx=()=>{
+    if(motionFxRef.current){setTimeout(waitForFx,40);return}
+    const remaining=earliestCommitAt-performance.now();
+    if(remaining>0){setTimeout(waitForFx,remaining);return}
+    commit();
+   };
    waitForFx();
   };
-  const effectRemainingMs=Math.max(0,(motionFxRef.current?.endsAt??0)-performance.now());
-  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+500});
+  const effectRemainingMs=Math.max(0,effectEndsAt-performance.now());
+  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000});
  },[state,gameOver,seen]);
 
  function play(action){
@@ -120,9 +129,11 @@ export default function App(){
  }
  function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
-  const moveResult=moving?.type==="ema"?terminalResult(applyLegalAction(before,action)):null;
+  const after=applyLegalAction(before,action);
+  const moveResult=terminalResult(after);
   const isEmmaPromotion=moveResult?.reason==="ema-safe-try"&&moveResult.winner===before.turn;
-  if(moving&&!isEmmaPromotion)playVoice(actionVoiceFor(action,moving),before.turn);
+  const givesCheck=!moveResult&&isEmmaInCheck(after,after.turn);
+  if(moving&&!isEmmaPromotion)playVoice(actionVoiceFor(action,moving,givesCheck),before.turn);
   const captureAt=action.swap?null:action.captureAt??(before.board[action.to[0]][action.to[1]]?[...action.to]:null);
   const captured=captureAt?before.board[captureAt[0]][captureAt[1]]:null;
   const duration=captured?720:action.category==="drop"?470:550;
@@ -191,7 +202,7 @@ export default function App(){
   {endMessage&&<div className="result-banner" role="status">{endMessage}</div>}
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(OPPONENT_SIDE)} disabled activeType={null} onPick={()=>{}} perspective={HUMAN_SIDE} reverse/>
-   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),fxClass=pieceFxClass(piece),moveClass=motionClass(piece,r,c),tryWinner=piece?.type==="ema"&&result?.reason==="ema-safe-try"&&piece.side===result.winner&&finishFx?.promotionRevealed!==false,moveStyle=motionStyle(r,c,moveClass),promotedOverride=moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?(target.category==="magic"?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{piece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={piece} forcePromoted={tryWinner} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`}}><Piece piece={{...motionFx.captured,side:motionFx.mover,promoted:false}}/></div>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
+   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),fxClass=pieceFxClass(piece),moveClass=motionClass(piece,r,c),checkClass=piece?.type==="ema"&&piece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(piece?.type==="ema"&&result?.reason==="ema-safe-try"&&piece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?(target.category==="magic"?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{piece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={piece} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`}}><Piece piece={{...motionFx.captured,side:motionFx.mover,promoted:false}}/></div>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
    <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(HUMAN_SIDE)} disabled={state.turn!==HUMAN_SIDE||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={HUMAN_SIDE}/>
   </main>
  </div>;
