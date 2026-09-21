@@ -1,0 +1,14 @@
+C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\deps\serde-43a00c5076b1ae9a.d: C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\build\serde-e632f71859696962\out/private.rs
+
+C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\deps\libserde-43a00c5076b1ae9a.rlib: C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\build\serde-e632f71859696962\out/private.rs
+
+C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\deps\libserde-43a00c5076b1ae9a.rmeta: C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\build\serde-e632f71859696962\out/private.rs
+
+C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\oka06\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+C:\Users\oka06\magical-shogi\wasm-engine\target\wasm32-unknown-unknown\release\build\serde-e632f71859696962\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\oka06\\magical-shogi\\wasm-engine\\target\\wasm32-unknown-unknown\\release\\build\\serde-e632f71859696962\\out

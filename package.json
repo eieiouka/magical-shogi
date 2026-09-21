@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build:wasm": "powershell -ExecutionPolicy Bypass -File scripts/build-wasm.ps1",
     "dev": "vite",
     "build": "vite build",
+    "build:all": "npm run build:wasm && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
