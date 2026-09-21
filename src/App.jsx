@@ -9,10 +9,16 @@ const HAND_ORDER=["sherry","hanna","hiro","nanoka","margo"];
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 const voiceFor=(event,side)=>`/audio/${event}-${side}.mp3`;
 const playVoice=(event,side)=>{const audio=new Audio(voiceFor(event,side));audio.play().catch(()=>{})};
-const playMoveVoice=(piece,side)=>playVoice(`move-${piece.type}`,side);
+const actionVoiceFor=(action,piece)=>{
+ if(action.category==="drop")return`drop-${piece.type}`;
+ if(action.magic)return`magic-${piece.type}`;
+ if(action.promote)return`promote-${piece.type}`;
+ return`move-${piece.type}`;
+};
 
-function Piece({piece,compact=false,perspective=HUMAN_SIDE,forcePromoted=false}){
- const shownPiece=forcePromoted?{...piece,promoted:true}:piece;
+function Piece({piece,compact=false,perspective=HUMAN_SIDE,forcePromoted=false,promotedOverride}){
+ let shownPiece=promotedOverride===undefined?piece:{...piece,promoted:promotedOverride};
+ if(forcePromoted)shownPiece={...shownPiece,promoted:true};
  return <div className={`piece piece--${shownPiece.promoted?"red":"black"} ${shownPiece.side!==perspective?"piece--opponent":""} ${compact?"piece--compact":""}`}>
   <span className="piece-fallback">{PIECES[piece.type].short}</span>
   <img src={imageFor(shownPiece)} alt={PIECES[piece.type].name} draggable={false}/>
@@ -39,7 +45,7 @@ export default function App(){
  const [finishFx,setFinishFx]=useState(null);
  const [finishFxDone,setFinishFxDone]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
- const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null);
+ const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
  const gameOver=Boolean(result||resigned);
@@ -55,8 +61,9 @@ export default function App(){
   const timers=[];
   setFinishFxDone(false);
   if(result.reason==="ema-safe-try"){
-   setFinishFx({phase:"try-transform",winner:result.winner,losingSide});
+   setFinishFx({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
    playVoice("try",result.winner);
+   timers.push(setTimeout(()=>setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current),600));
    timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide});playVoice("arrow",result.winner)},2600));
    timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide});playVoice("checkmate",losingSide)},4000));
    timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide});playVoice("fall",losingSide)},5400));
@@ -113,13 +120,21 @@ export default function App(){
  }
  function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
-  if(moving)playMoveVoice(moving,before.turn);
+  const moveResult=moving?.type==="ema"?terminalResult(applyLegalAction(before,action)):null;
+  const isEmmaPromotion=moveResult?.reason==="ema-safe-try"&&moveResult.winner===before.turn;
+  if(moving&&!isEmmaPromotion)playVoice(actionVoiceFor(action,moving),before.turn);
   const captureAt=action.swap?null:action.captureAt??(before.board[action.to[0]][action.to[1]]?[...action.to]:null);
   const captured=captureAt?before.board[captureAt[0]][captureAt[1]]:null;
   const duration=captured?720:action.category==="drop"?470:550;
-  const fx={action,moving,mover:before.turn,captureAt,captured,endsAt:performance.now()+duration};
+  const id=++motionSequence.current;
+  const fx={id,action,moving,mover:before.turn,captureAt,captured,promotionRevealed:!action.promote,endsAt:performance.now()+duration};
   motionFxRef.current=fx;setMotionFx(fx);
-  setTimeout(()=>{if(motionFxRef.current===fx)motionFxRef.current=null;setMotionFx(current=>current===fx?null:current)},duration);
+  if(action.promote)setTimeout(()=>{
+   if(motionFxRef.current?.id!==id)return;
+   const revealed={...motionFxRef.current,promotionRevealed:true};
+   motionFxRef.current=revealed;setMotionFx(revealed);
+  },213);
+  setTimeout(()=>{if(motionFxRef.current?.id===id)motionFxRef.current=null;setMotionFx(current=>current?.id===id?null:current)},duration);
  }
 
  const targets=new Map(selectable.map(a=>[`${a.to[0]},${a.to[1]}`,a]));
@@ -176,7 +191,7 @@ export default function App(){
   {endMessage&&<div className="result-banner" role="status">{endMessage}</div>}
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(OPPONENT_SIDE)} disabled activeType={null} onPick={()=>{}} perspective={HUMAN_SIDE} reverse/>
-   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),fxClass=pieceFxClass(piece),moveClass=motionClass(piece,r,c),tryWinner=piece?.type==="ema"&&result?.reason==="ema-safe-try"&&piece.side===result.winner,moveStyle=motionStyle(r,c,moveClass);return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?(target.category==="magic"?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{piece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={piece} forcePromoted={tryWinner}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`}}><Piece piece={{...motionFx.captured,side:motionFx.mover,promoted:false}}/></div>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
+   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),fxClass=pieceFxClass(piece),moveClass=motionClass(piece,r,c),tryWinner=piece?.type==="ema"&&result?.reason==="ema-safe-try"&&piece.side===result.winner&&finishFx?.promotionRevealed!==false,moveStyle=motionStyle(r,c,moveClass),promotedOverride=moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?(target.category==="magic"?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{piece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={piece} forcePromoted={tryWinner} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`}}><Piece piece={{...motionFx.captured,side:motionFx.mover,promoted:false}}/></div>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
    <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(HUMAN_SIDE)} disabled={state.turn!==HUMAN_SIDE||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={HUMAN_SIDE}/>
   </main>
  </div>;
