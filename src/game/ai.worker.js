@@ -1,4 +1,4 @@
-import {bestAction,isTryCritical,createTranspositionTable} from "./aiEngine.js";
+import {bestAction,createTranspositionTable} from "./aiEngine.js";
 
 const sharedTT=createTranspositionTable();
 let ponderToken=0;
@@ -15,13 +15,13 @@ const wasmReady=(async()=>{
   }catch(error){wasmEngine=null;console.error("[魔法将棋AI] WASM load failed; JavaScript fallback",error)}
 })();
 
-async function runEngine(state,seen,target,timeLimitMs,minDepth){
+async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0){
   await wasmReady;
   if(wasmEngine){
-    console.info(`[魔法将棋AI] search start engine=wasm maxDepth=${target} budget=${timeLimitMs}ms`);
-    try{return wasmEngine.best_action(state,target,minDepth,timeLimitMs)}catch(error){console.error("[魔法将棋AI] WASM search failed; JavaScript fallback",error)}
+    console.info(`[魔法将棋AI] search start engine=wasm maxDepth=${target} minDepth=${minDepth} selectiveWin=${selectiveDepth} budget=${timeLimitMs}ms`);
+    try{return wasmEngine.best_action(state,target,minDepth,timeLimitMs,selectiveDepth)}catch(error){console.error("[魔法将棋AI] WASM search failed; JavaScript fallback",error)}
   }
-  console.info(`[魔法将棋AI] search start engine=javascript maxDepth=${target} budget=${timeLimitMs}ms`);
+  console.info(`[魔法将棋AI] search start engine=javascript maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
   return bestAction(state,seen,target,{timeLimitMs,minDepth,tt:sharedTT});
 }
 
@@ -43,11 +43,10 @@ self.onmessage=async({data})=>{
     return
   }
   try{
-    const tryCritical=isTryCritical(data.state);
     const targetDepth=UNBOUNDED_DEPTH;
     const timeLimitMs=Math.max(500,data.timeLimitMs??500);
     const startedAt=performance.now();
-    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,tryCritical?11:7);
+    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,7,7);
     const elapsed=Math.max(1,performance.now()-startedAt);
     const nps=result?.nodes?Math.round(result.nodes*1000/elapsed):"?";
     console.info(`[魔法将棋AI] engine=${result?.engine??"javascript"} depth=${result?.depth??"?"} nodes=${result?.nodes??"?"} elapsed=${Math.round(elapsed)}ms nps=${nps}`);
