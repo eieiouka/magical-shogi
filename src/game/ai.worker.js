@@ -15,20 +15,20 @@ const wasmReady=(async()=>{
   }catch(error){wasmEngine=null;console.error("[魔法将棋AI] WASM load failed; JavaScript fallback",error)}
 })();
 
-async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0){
+async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
   await wasmReady;
   if(wasmEngine){
-    console.info(`[魔法将棋AI] search start engine=wasm maxDepth=${target} minDepth=${minDepth} selectiveWin=${selectiveDepth} budget=${timeLimitMs}ms`);
+    if(log)console.info(`[魔法将棋AI] search start engine=wasm maxDepth=${target} minDepth=${minDepth} selectiveWin=${selectiveDepth} budget=${timeLimitMs}ms`);
     try{return wasmEngine.best_action(state,target,minDepth,timeLimitMs,selectiveDepth)}catch(error){console.error("[魔法将棋AI] WASM search failed; JavaScript fallback",error)}
   }
-  console.info(`[魔法将棋AI] search start engine=javascript maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
+  if(log)console.info(`[魔法将棋AI] search start engine=javascript maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
   return bestAction(state,seen,target,{timeLimitMs,minDepth,tt:sharedTT});
 }
 
 async function ponder(state,seen,token){
   if(token!==ponderToken)return;
   try{
-    const result=await runEngine(state,seen,UNBOUNDED_DEPTH,180,3);
+    const result=await runEngine(state,seen,UNBOUNDED_DEPTH,180,3,0,false);
     deepestPonder=Math.max(deepestPonder,result?.depth??1);
   }catch{}
   if(token===ponderToken)setTimeout(()=>ponder(state,seen,token),0);
