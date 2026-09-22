@@ -15,6 +15,20 @@ npm run dev
 npm run build
 ```
 
+## Fairy-Stockfish AI
+
+Fairy-Stockfishのブラウザ版を生成するには、Emscripten SDKをactivateし、GNU makeを
+PATHへ追加したPowerShellで次を一度実行します。
+
+```powershell
+npm run build:fairy
+npm run build
+```
+
+生成される`public/fairy/stockfish.js`、`stockfish.wasm`、`stockfish.worker.js`をGitへ
+追加してVercelへpushしてください。未生成の場合は従来AIへ自動的に戻るため、UI開発は
+そのまま続けられます。詳しい内部構成は`ENGINE_ARCHITECTURE_JA.md`を参照してください。
+
 ## 駒画像
 
 `public/images/pieces/`へ次のPNG画像を配置してください。

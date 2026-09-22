@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "build:wasm": "powershell -ExecutionPolicy Bypass -File scripts/build-wasm.ps1",
+    "build:fairy": "powershell -ExecutionPolicy Bypass -File scripts/build-fairy-wasm.ps1",
     "dev": "vite",
     "build": "vite build",
-    "build:all": "npm run build:wasm && npm run build",
+    "build:all": "npm run build:wasm && npm run build:fairy && npm run build",
+    "test:fairy-codec": "node scripts/test-fairy-codec.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

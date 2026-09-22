@@ -1,10 +1,47 @@
 import {bestAction,createTranspositionTable} from "./aiEngine.js";
+import {fairyMoveToAction,stateToFairyFen} from "./fairyCodec.js";
 
 const sharedTT=createTranspositionTable();
 let ponderToken=0;
 let deepestPonder=1;
 let wasmEngine=null;
+let fairyWorker=null;
+let fairySequence=0;
+const fairyPending=new Map();
 const UNBOUNDED_DEPTH=253;
+const fairyReady=(async()=>{
+  try{
+    const engineUrl=new URL("/fairy/stockfish.js",self.location.origin);
+    const response=await fetch(engineUrl,{method:"HEAD",cache:"no-store"});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const contentType=response.headers.get("content-type")||"";
+    if(!/javascript|ecmascript/.test(contentType))throw new Error("Fairy-Stockfish artifact is not built");
+    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js",self.location.origin));
+    fairyWorker.onmessage=({data})=>{
+      if(data.type==="ready"){fairyPending.get("ready")?.resolve();fairyPending.delete("ready");return}
+      if(data.type==="error"&&data.id==null&&fairyPending.has("ready")){
+        fairyPending.get("ready").reject(new Error(data.message));fairyPending.delete("ready");return;
+      }
+      const pending=fairyPending.get(data.id);
+      if(!pending)return;
+      if(data.type==="error")pending.reject(new Error(data.message));
+      else if(data.type==="result")pending.resolve(data);
+      else return;
+      fairyPending.delete(data.id);
+    };
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("Fairy-Stockfish startup timeout")),15000);
+      fairyPending.set("ready",{resolve:()=>{clearTimeout(timer);resolve()},reject});
+      fairyWorker.postMessage({type:"init"});
+    });
+    console.info("[魔法将棋AI] Fairy-Stockfish WASM loaded");
+    return true;
+  }catch(error){
+    fairyWorker?.terminate();fairyWorker=null;
+    console.info("[魔法将棋AI] Fairy-Stockfish unavailable; use existing engine",error?.message||error);
+    return false;
+  }
+})();
 const wasmReady=(async()=>{
   try{
     const url=new URL("./wasm/magical_shogi_engine.js",import.meta.url).href;
@@ -16,6 +53,16 @@ const wasmReady=(async()=>{
 })();
 
 async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
+  if(await fairyReady){
+    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=7 budget=${timeLimitMs}ms`);
+    const id=++fairySequence;
+    const result=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{fairyPending.delete(id);reject(new Error("Fairy-Stockfish search timeout"))},Math.max(20000,timeLimitMs+10000));
+      fairyPending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});
+      fairyWorker.postMessage({type:"search",id,fen:stateToFairyFen(state),timeLimitMs,maxDepth:target});
+    });
+    return {action:fairyMoveToAction(state,result.bestmove),score:result.score,depth:result.depth,nodes:result.nodes,engine:"fairy-stockfish",proven:Math.abs(result.score)>=19000};
+  }
   await wasmReady;
   if(wasmEngine){
     if(log)console.info(`[魔法将棋AI] search start engine=wasm mode=iterative-lmr maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
@@ -36,9 +83,10 @@ async function ponder(state,seen,token){
 
 self.onmessage=async({data})=>{
   const token=++ponderToken;
-  if(data.type==="reset"){sharedTT.clear();wasmEngine?.reset_engine?.();deepestPonder=1;return}
+  if(data.type==="reset"){sharedTT.clear();wasmEngine?.reset_engine?.();fairyWorker?.postMessage({type:"reset"});deepestPonder=1;return}
   if(data.type==="ponder"){
     deepestPonder=1;
+    if(await fairyReady)return;
     setTimeout(()=>ponder(data.state,data.seen,token),0);
     return
   }
