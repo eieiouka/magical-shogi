@@ -18,7 +18,7 @@ const wasmReady=(async()=>{
 async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
   await wasmReady;
   if(wasmEngine){
-    if(log)console.info(`[魔法将棋AI] search start engine=wasm maxDepth=${target} minDepth=${minDepth} selectiveWin=${selectiveDepth} budget=${timeLimitMs}ms`);
+    if(log)console.info(`[魔法将棋AI] search start engine=wasm mode=iterative-lmr maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
     try{return wasmEngine.best_action(state,target,minDepth,timeLimitMs,selectiveDepth)}catch(error){console.error("[魔法将棋AI] WASM search failed; JavaScript fallback",error)}
   }
   if(log)console.info(`[魔法将棋AI] search start engine=javascript maxDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
@@ -46,7 +46,7 @@ self.onmessage=async({data})=>{
     const targetDepth=UNBOUNDED_DEPTH;
     const timeLimitMs=Math.max(500,data.timeLimitMs??500);
     const startedAt=performance.now();
-    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,7,7);
+    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,7,0);
     const elapsed=Math.max(1,performance.now()-startedAt);
     const nps=result?.nodes?Math.round(result.nodes*1000/elapsed):"?";
     console.info(`[魔法将棋AI] engine=${result?.engine??"javascript"} depth=${result?.depth??"?"} nodes=${result?.nodes??"?"} elapsed=${Math.round(elapsed)}ms nps=${nps}`);
