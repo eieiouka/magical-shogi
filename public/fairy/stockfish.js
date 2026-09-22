@@ -64,26 +64,23 @@ const pendingCustomMessages = [];
 
 let customMessageRetry = null;
 
-let uciWorker = null;
-
-let uciWorkerDetectedAt = 0;
+let workersDetectedAt = 0;
 
 function flushCustomMessages() {
-  if (!uciWorker && typeof PThread !== "undefined") {
-    uciWorker = Object.values(PThread.pthreads ?? {})[0] ?? null;
-    if (uciWorker) {
-      uciWorkerDetectedAt = performance.now();
-      console.log("[Fairy trace parent] pthread detected");
-    }
+  const workers = typeof PThread !== "undefined" ? Object.values(PThread.pthreads ?? {}) : [];
+  if (workers.length > 0 && workersDetectedAt === 0) {
+    workersDetectedAt = performance.now();
   }
-  if (uciWorker && performance.now() - uciWorkerDetectedAt >= 100) {
+  if (workers.length > 0 && performance.now() - workersDetectedAt >= 100) {
     while (pendingCustomMessages.length > 0) {
       const data = pendingCustomMessages.shift();
-      console.log("[Fairy trace parent] send custom", data);
-      uciWorker.postMessage({
-        "cmd": "custom",
-        "userData": data
-      });
+      console.log("[Fairy parent] broadcast", data, "workers=", workers.length);
+      for (const worker of workers) {
+        worker.postMessage({
+          "cmd": "custom",
+          "userData": data
+        });
+      }
     }
     customMessageRetry = null;
     return;
@@ -103,19 +100,12 @@ class Queue {
     this.list = [];
   }
   async get() {
-    console.log("[Fairy trace queue] get requested; queued=", this.list.length);
     if (this.list.length > 0) {
-      const value = this.list.shift();
-      console.log("[Fairy trace queue] get immediate", value);
-      return value;
+      return this.list.shift();
     }
-    return await new Promise(resolve => (this.getter = value => {
-      console.log("[Fairy trace queue] get resumed", value);
-      resolve(value);
-    }));
+    return await new Promise(resolve => (this.getter = resolve));
   }
   put(x) {
-    console.log("[Fairy trace queue] put", x);
     if (this.getter) {
       this.getter(x);
       this.getter = null;
@@ -129,7 +119,6 @@ class Queue {
 Module["queue"] = new Queue;
 
 Module["onCustomMessage"] = data => {
-  console.log("[Fairy trace pthread] onCustomMessage", data);
   Module["queue"].put(data);
 };
 
@@ -453,6 +442,10 @@ if (ENVIRONMENT_IS_PTHREAD) {
         if (initializedJS) {
           checkMailbox();
         }
+      } else if (cmd === "custom") {
+        // FAIRY_CUSTOM_MESSAGE_HANDLER
+        console.log("[Fairy pthread] received", msgData.userData);
+        Module["queue"].put(msgData.userData);
       } else if (cmd) {
         // The received message looks like something that should be handled by this message
         // handler, (since there is a cmd field present), but is not one of the
@@ -981,7 +974,8 @@ var PThread = {
   }),
   allocateUnusedWorker() {
     var worker;
-    var pthreadMainJs = _scriptName;
+    // FAIRY_PTHREAD_SCRIPT_URL
+    var pthreadMainJs = Module["pthreadMainScript"] || _scriptName;
     worker = new Worker(pthreadMainJs, {
       // This is the way that we signal to the node worker that it is hosting
       // a pthread.
@@ -4925,32 +4919,6 @@ if ((!(ENVIRONMENT_IS_PTHREAD))) {
   // can use await here (since it's not top-level-await).
   wasmExports = await createWasm();
   await run();
-}
-
-// end include: postamble.js
-// include: emscripten/worker-postamble.js
-// Emscripten replaces self.onmessage again while a pthread is initialized.
-// Reinstall the Fairy custom-message wrapper whenever that happens.
-if (ENVIRONMENT_IS_PTHREAD) {
-  console.log("[Fairy trace pthread] postamble active");
-  const installFairyMessageHandler = () => {
-    const current = self.onmessage;
-    if (current && !current.__fairyMessageHandler) {
-      const wrapped = e => {
-        if (e.data?.cmd === "custom") {
-          console.log("[Fairy trace pthread] custom received", e.data.userData);
-          Module["onCustomMessage"]?.(e.data.userData);
-          return;
-        }
-        current(e);
-      };
-      wrapped.__fairyMessageHandler = true;
-      self.onmessage = wrapped;
-      console.log("[Fairy trace pthread] handler installed");
-    }
-    setTimeout(installFairyMessageHandler, 10);
-  };
-  installFairyMessageHandler();
 }
 
 

@@ -15,7 +15,6 @@ VPATH := $(VPATH):emscripten
 EM_CXXFLAGS += -pthread
 EM_LDFLAGS += \
 	--pre-js emscripten/preamble.js \
-	--post-js emscripten/worker-postamble.js \
 	-s MODULARIZE=1 -s EXPORT_NAME="Stockfish" -s ENVIRONMENT=web,worker,node -s INVOKE_RUN=0 \
 	-s INCOMING_MODULE_JS_API=["print","printErr","locateFile"] \
 	-s STRICT=1 \
@@ -72,6 +71,7 @@ emscripten/embedded_nnue.cpp: net
 endif
 
 emscripten_copy_files:
+	node emscripten/patch-worker-message.js stockfish.js
 	cp -f ../AUTHORS ../Copying.txt stockfish.js stockfish.wasm emscripten/public
 	cat emscripten/worker-postamble.js > emscripten/public/stockfish.worker.js
 

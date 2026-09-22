@@ -1,8 +1,8 @@
-Fairy-Stockfish Emscripten 6 end-to-end trace v18
+Fairy-Stockfish Emscripten 6 pthread URL fix v21
 
-Pthread output must be proxied to the parent Module. This version leaves
-print/printErr undefined inside pthreads so Emscripten installs its standard
-output proxy, while retaining the custom UCI input handler from v16.
+This version fixes the actual pthread script URL. When stockfish.js is loaded by
+importScripts, Emscripten otherwise mistakes fairy-bridge.worker.js for its own
+pthread entry script. The bridge now explicitly points pthreads to stockfish.js.
 
 Extract into C:\Users\oka06\magical-shogi and overwrite files.
 

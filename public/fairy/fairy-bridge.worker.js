@@ -10,10 +10,12 @@ function emit(type,extra={}){self.postMessage({type,...extra})}
 function start(){
   if(ready)return ready;
   ready=(async()=>{
-    importScripts("./stockfish.js?v=pthread-v18");
+    const pthreadMainScript=new URL("./stockfish.js?v=pthread-v21",self.location.href).href;
+    importScripts(pthreadMainScript);
     engine=await self.Stockfish({
       locateFile:file=>new URL(file,self.location.href).href,
       onEngineLine:onLine,
+      pthreadMainScript,
     });
     engine.addMessageListener(onLine);
     console.log("[Fairy bridge] before callMain");
