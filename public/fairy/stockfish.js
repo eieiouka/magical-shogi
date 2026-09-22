@@ -60,15 +60,40 @@ if (ENVIRONMENT_IS_NODE) {
 // refer to Module (if they choose; they can also define Module)
 // include: emscripten/preamble.js
 // Post custom message to all workers (including main worker)
-Module["postCustomMessage"] = data => {
-  // TODO: Acutally want to post only to main worker
-  for (let worker of PThread.runningWorkers) {
-    // prettier-ignore
-    worker.postMessage({
-      "cmd": "custom",
-      "userData": data
-    });
+const pendingCustomMessages = [];
+
+let customMessageRetry = null;
+
+let uciWorker = null;
+
+let uciWorkerDetectedAt = 0;
+
+function flushCustomMessages() {
+  if (!uciWorker && typeof PThread !== "undefined") {
+    uciWorker = Object.values(PThread.pthreads ?? {})[0] ?? null;
+    if (uciWorker) {
+      uciWorkerDetectedAt = performance.now();
+      console.log("[Fairy trace parent] pthread detected");
+    }
   }
+  if (uciWorker && performance.now() - uciWorkerDetectedAt >= 100) {
+    while (pendingCustomMessages.length > 0) {
+      const data = pendingCustomMessages.shift();
+      console.log("[Fairy trace parent] send custom", data);
+      uciWorker.postMessage({
+        "cmd": "custom",
+        "userData": data
+      });
+    }
+    customMessageRetry = null;
+    return;
+  }
+  customMessageRetry = setTimeout(flushCustomMessages, 10);
+}
+
+Module["postCustomMessage"] = data => {
+  pendingCustomMessages.push(data);
+  if (customMessageRetry === null) flushCustomMessages();
 };
 
 // Simple queue with async get (assume single consumer)
@@ -78,12 +103,19 @@ class Queue {
     this.list = [];
   }
   async get() {
+    console.log("[Fairy trace queue] get requested; queued=", this.list.length);
     if (this.list.length > 0) {
-      return this.list.shift();
+      const value = this.list.shift();
+      console.log("[Fairy trace queue] get immediate", value);
+      return value;
     }
-    return await new Promise(resolve => (this.getter = resolve));
+    return await new Promise(resolve => (this.getter = value => {
+      console.log("[Fairy trace queue] get resumed", value);
+      resolve(value);
+    }));
   }
   put(x) {
+    console.log("[Fairy trace queue] put", x);
     if (this.getter) {
       this.getter(x);
       this.getter = null;
@@ -97,6 +129,7 @@ class Queue {
 Module["queue"] = new Queue;
 
 Module["onCustomMessage"] = data => {
+  console.log("[Fairy trace pthread] onCustomMessage", data);
   Module["queue"].put(data);
 };
 
@@ -117,15 +150,23 @@ Module["removeMessageListener"] = listener => {
   }
 };
 
-Module["print"] = Module["printErr"] = data => {
-  if (listeners.length === 0) {
-    console.log(data);
-    return;
-  }
-  for (let listener of listeners) {
-    listener(data);
-  }
-};
+// On pthreads, leave print/printErr undefined. Emscripten will install proxy
+// handlers that forward engine output to the parent Module's print callback.
+if (!ENVIRONMENT_IS_PTHREAD) {
+  Module["print"] = Module["printErr"] = data => {
+    if (typeof Module["onEngineLine"] === "function") {
+      Module["onEngineLine"](data);
+      return;
+    }
+    if (listeners.length === 0) {
+      console.log(data);
+      return;
+    }
+    for (let listener of listeners) {
+      listener(data);
+    }
+  };
+}
 
 Module["terminate"] = () => {
   PThread.terminateAllThreads();
@@ -151,6 +192,9 @@ if (typeof __filename != "undefined") {
 var scriptDirectory = "";
 
 function locateFile(path) {
+  if (Module["locateFile"]) {
+    return Module["locateFile"](path, scriptDirectory);
+  }
   return scriptDirectory + path;
 }
 
@@ -921,7 +965,7 @@ var PThread = {
     // When running on a pthread, none of the incoming parameters on the module
     // object are present. Proxy known handlers back to the main thread if specified.
     var handlers = [];
-    var knownHandlers = [];
+    var knownHandlers = [ "print", "printErr" ];
     for (var handler of knownHandlers) {
       if (Module.propertyIsEnumerable(handler)) {
         handlers.push(handler);
@@ -4703,9 +4747,14 @@ FS.staticInit();
   // With WASM_ESM_INTEGRATION this has to happen at the top level and not
   // delayed until processModuleArgs.
   initMemory();
+  // Begin ATMODULES hooks
+  if (Module["print"]) out = Module["print"];
+  if (Module["printErr"]) err = Module["printErr"];
 }
 
 // Begin runtime exports
+Module["callMain"] = callMain;
+
 Module["FS"] = FS;
 
 // End runtime exports
@@ -4862,7 +4911,7 @@ async function run(args = programArgs) {
   if (ABORT) return;
   initRuntime();
   // No ATMAINS hooks
-  var noInitialRun = false;
+  var noInitialRun = true;
   if (!noInitialRun) callMain(args);
   postRun();
 }
@@ -4876,6 +4925,32 @@ if ((!(ENVIRONMENT_IS_PTHREAD))) {
   // can use await here (since it's not top-level-await).
   wasmExports = await createWasm();
   await run();
+}
+
+// end include: postamble.js
+// include: emscripten/worker-postamble.js
+// Emscripten replaces self.onmessage again while a pthread is initialized.
+// Reinstall the Fairy custom-message wrapper whenever that happens.
+if (ENVIRONMENT_IS_PTHREAD) {
+  console.log("[Fairy trace pthread] postamble active");
+  const installFairyMessageHandler = () => {
+    const current = self.onmessage;
+    if (current && !current.__fairyMessageHandler) {
+      const wrapped = e => {
+        if (e.data?.cmd === "custom") {
+          console.log("[Fairy trace pthread] custom received", e.data.userData);
+          Module["onCustomMessage"]?.(e.data.userData);
+          return;
+        }
+        current(e);
+      };
+      wrapped.__fairyMessageHandler = true;
+      self.onmessage = wrapped;
+      console.log("[Fairy trace pthread] handler installed");
+    }
+    setTimeout(installFairyMessageHandler, 10);
+  };
+  installFairyMessageHandler();
 }
 
 

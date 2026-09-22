@@ -10,7 +10,7 @@ function emit(type,extra={}){self.postMessage({type,...extra})}
 function start(){
   if(ready)return ready;
   ready=(async()=>{
-    importScripts("./stockfish.js?v=pthread-v18");
+    importScripts("./stockfish.js");
     engine=await self.Stockfish({
       locateFile:file=>new URL(file,self.location.href).href,
       onEngineLine:onLine,

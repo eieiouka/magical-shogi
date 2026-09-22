@@ -1,4 +1,4 @@
-import {bestAction,createTranspositionTable} from "./aiEngine.js";
+﻿import {bestAction,createTranspositionTable} from "./aiEngine.js";
 import {fairyMoveToAction,stateToFairyFen} from "./fairyCodec.js";
 
 const sharedTT=createTranspositionTable();
@@ -16,7 +16,7 @@ const fairyReady=(async()=>{
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const contentType=response.headers.get("content-type")||"";
     if(!/javascript|ecmascript/.test(contentType))throw new Error("Fairy-Stockfish artifact is not built");
-    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js",self.location.origin));
+    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js?v=worker-v18",self.location.origin));
     fairyWorker.onmessage=({data})=>{
       if(data.type==="ready"){fairyPending.get("ready")?.resolve();fairyPending.delete("ready");return}
       if(data.type==="error"&&data.id==null&&fairyPending.has("ready")){
