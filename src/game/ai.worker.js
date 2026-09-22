@@ -16,7 +16,7 @@ const fairyReady=(async()=>{
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const contentType=response.headers.get("content-type")||"";
     if(!/javascript|ecmascript/.test(contentType))throw new Error("Fairy-Stockfish artifact is not built");
-    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js?v=worker-v21",self.location.origin));
+    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js?v=worker-v23",self.location.origin));
     fairyWorker.onmessage=({data})=>{
       if(data.type==="ready"){fairyPending.get("ready")?.resolve();fairyPending.delete("ready");return}
       if(data.type==="error"&&data.id==null&&fairyPending.has("ready")){
@@ -54,10 +54,10 @@ const wasmReady=(async()=>{
 
 async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
   if(await fairyReady){
-    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=7 budget=${timeLimitMs}ms`);
+    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=15 budget=${timeLimitMs}ms`);
     const id=++fairySequence;
     const result=await new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{fairyPending.delete(id);reject(new Error("Fairy-Stockfish search timeout"))},Math.max(20000,timeLimitMs+10000));
+      const timer=setTimeout(()=>{fairyPending.delete(id);reject(new Error("Fairy-Stockfish search timeout"))},Math.max(120000,timeLimitMs+10000));
       fairyPending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});
       fairyWorker.postMessage({type:"search",id,fen:stateToFairyFen(state),timeLimitMs,maxDepth:target});
     });

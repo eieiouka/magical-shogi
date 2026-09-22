@@ -1,8 +1,8 @@
-Fairy-Stockfish Emscripten 6 pthread URL fix v21
+Fairy-Stockfish continuous minimum depth 15 v23
 
-This version fixes the actual pthread script URL. When stockfish.js is loaded by
-importScripts, Emscripten otherwise mistakes fairy-bridge.worker.js for its own
-pthread entry script. The bridge now explicitly points pthreads to stockfish.js.
+This version uses one continuous iterative-deepening search. It sends stop only
+after both the time budget and depth 15 have been reached, avoiding the previous
+depth-15 search followed by a second search restarted from depth 1.
 
 Extract into C:\Users\oka06\magical-shogi and overwrite files.
 

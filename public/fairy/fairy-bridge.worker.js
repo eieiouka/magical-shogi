@@ -4,13 +4,14 @@ let ready=null;
 let active=null;
 let queued=null;
 let sequence=0;
+const MIN_DEPTH=15;
 
 function emit(type,extra={}){self.postMessage({type,...extra})}
 
 function start(){
   if(ready)return ready;
   ready=(async()=>{
-    const pthreadMainScript=new URL("./stockfish.js?v=pthread-v21",self.location.href).href;
+    const pthreadMainScript=new URL("./stockfish.js?v=pthread-v23",self.location.href).href;
     importScripts(pthreadMainScript);
     engine=await self.Stockfish({
       locateFile:file=>new URL(file,self.location.href).href,
@@ -52,29 +53,26 @@ function onLine(raw){
   if(depth)active.depth=Math.max(active.depth,Number(depth[1]));
   if(nodes)active.nodes=Math.max(active.nodes,Number(nodes[1]));
   if(score)active.score=score[1]==="mate"?(Number(score[2])>0?20000:-20000):Number(score[2]);
+  stopWhenReady();
   const best=line.match(/^bestmove\s+(\S+)/);
   if(best){
     if(active.cancelled){
-      const cancelled=active;active=null;
+      const cancelled=active;clearTimeout(cancelled.budgetTimer);active=null;
       emit("error",{id:cancelled.id,message:"search superseded"});
       if(queued){const next=queued;queued=null;beginSearch(next)}
       return;
     }
-    if(active.phase==="minimum"){
-      active.minimum={bestmove:best[1],depth:active.depth,nodes:active.nodes,score:active.score};
-      const remaining=active.budget-(performance.now()-active.started);
-      if(remaining>20){
-        active.phase="timed";active.depth=0;active.nodes=0;active.score=active.minimum.score;
-        engine.postMessage(`position fen ${active.fen}`);
-        engine.postMessage(`go movetime ${Math.max(1,Math.round(remaining))} depth ${active.maxDepth}`);
-        return;
-      }
-    }
-    const done=active;active=null;
-    const chosen=done.phase==="timed"&&done.depth>=7
-      ?{bestmove:best[1],depth:done.depth,nodes:done.nodes,score:done.score}
-      :done.minimum||{bestmove:best[1],depth:done.depth,nodes:done.nodes,score:done.score};
-    emit("result",{id:done.id,...chosen,elapsed:performance.now()-done.started});
+    const done=active;clearTimeout(done.budgetTimer);active=null;
+    emit("result",{id:done.id,bestmove:best[1],depth:done.depth,nodes:done.nodes,score:done.score,elapsed:performance.now()-done.started});
+  }
+}
+
+function stopWhenReady(){
+  if(!active||active.cancelled||active.stopSent)return;
+  const timeReached=performance.now()-active.started>=active.budget;
+  if(timeReached&&active.depth>=MIN_DEPTH){
+    active.stopSent=true;
+    engine.postMessage("stop");
   }
 }
 
@@ -86,9 +84,11 @@ async function search(data){
 
 function beginSearch(data){
   const id=data.id??++sequence;
-  active={id,fen:data.fen,budget:Math.max(1,Number(data.timeLimitMs||1000)),maxDepth:Math.max(7,data.maxDepth||253),phase:"minimum",minimum:null,depth:0,nodes:0,score:0,started:performance.now(),cancelled:false};
+  const budget=Math.max(1,Number(data.timeLimitMs||1000));
+  active={id,fen:data.fen,budget,maxDepth:Math.max(MIN_DEPTH,data.maxDepth||253),depth:0,nodes:0,score:0,started:performance.now(),cancelled:false,stopSent:false,budgetTimer:null};
+  active.budgetTimer=setTimeout(stopWhenReady,budget);
   engine.postMessage(`position fen ${data.fen}`);
-  engine.postMessage("go depth 7");
+  engine.postMessage(`go depth ${active.maxDepth}`);
 }
 
 self.onmessage=async({data})=>{
