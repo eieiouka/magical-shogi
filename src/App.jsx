@@ -3,8 +3,7 @@ import "./App.css";
 import {PIECES,makeInitialState,generateAllLegalActions,applyLegalAction,terminalResult,isEmmaInCheck} from "./game/rules.js";
 import {stateKey} from "./game/aiEngine.js";
 
-const HUMAN_SIDE="sente";
-const OPPONENT_SIDE="gote";
+const randomSide=()=>Math.random()<.5?"sente":"gote";
 const HAND_ORDER=["sherry","hanna","hiro","nanoka","margo"];
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
@@ -29,12 +28,11 @@ const actionVoiceFor=(action,piece,givesCheck=false)=>{
  return null;
 };
 
-function Piece({piece,compact=false,perspective=HUMAN_SIDE,forcePromoted=false,promotedOverride}){
+function Piece({piece,compact=false,perspective="sente",forcePromoted=false,promotedOverride}){
  let shownPiece=promotedOverride===undefined?piece:{...piece,promoted:promotedOverride};
  if(forcePromoted)shownPiece={...shownPiece,promoted:true};
- return <div className={`piece piece--${shownPiece.promoted?"red":"black"} ${shownPiece.side!==perspective?"piece--opponent":""} ${compact?"piece--compact":""}`}>
-  <span className="piece-fallback">{PIECES[piece.type].short}</span>
-  <img src={imageFor(shownPiece)} alt={PIECES[piece.type].name} draggable={false}/>
+ return <div className={`piece piece--${shownPiece.promoted?"red":"black"} ${shownPiece.side!==perspective?"piece--opponent":""} ${compact?"piece--compact":""}`} role="img" aria-label={PIECES[piece.type].name}>
+  <img src={imageFor(shownPiece)} alt="" aria-hidden="true" draggable={false}/>
   <span className="piece-name">{PIECES[piece.type].short}</span>
  </div>;
 }
@@ -44,12 +42,15 @@ function Hand({className,title,pieces,activeType,onPick,disabled,perspective,rev
  const groups=order.map(type=>({type,items:pieces.filter(piece=>piece.type===type)})).filter(group=>group.items.length);
  return <aside className={`hand ${className}`}>
   <div className="hand-title">{title}</div>
-  <div className="hand-pieces">{groups.length?groups.map(({type,items})=><div className={`hand-group ${items.length>1?"hand-group--double":""}`} key={type}>{items.map((piece,i)=><button disabled={disabled} key={`${piece.id}-${i}`} className={`hand-piece ${activeType===type?"active":""}`} onClick={()=>onPick(type)} aria-label={`${PIECES[type].name}を選ぶ`}><Piece piece={piece} compact perspective={perspective}/></button>)}</div>):<span className="hand-empty">なし</span>}</div>
+  <div className={`hand-pieces ${groups.length?"":"hand-pieces--empty"}`}>{groups.length?groups.map(({type,items})=><div className={`hand-group ${items.length>1?"hand-group--double":""}`} key={type}>{items.map((piece,i)=><button disabled={disabled} key={`${piece.id}-${i}`} className={`hand-piece ${activeType===type?"active":""}`} onClick={()=>onPick(type)} aria-label={`${PIECES[type].name}を選ぶ`}><Piece piece={piece} compact perspective={perspective}/></button>)}</div>):<span className="hand-empty">なし</span>}</div>
  </aside>;
 }
 
 export default function App(){
  const initial=useMemo(()=>makeInitialState(),[]);
+ const [started,setStarted]=useState(false);
+ const [humanSide,setHumanSide]=useState("sente");
+ const opponentSide=humanSide==="sente"?"gote":"sente";
  const [timeline,setTimeline]=useState([initial]);
  const [selected,setSelected]=useState(null);
  const [handType,setHandType]=useState(null);
@@ -57,8 +58,9 @@ export default function App(){
  const [resigned,setResigned]=useState(false);
  const [finishFx,setFinishFx]=useState(null);
  const [finishFxDone,setFinishFxDone]=useState(false);
+ const [resultRevealReady,setResultRevealReady]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
- const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0);
+ const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),resultVoicePlayed=useRef(false);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
  const checkedSide=!result&&isEmmaInCheck(state,state.turn)?state.turn:null;
@@ -71,9 +73,10 @@ export default function App(){
  useEffect(()=>{worker.current=new Worker(new URL("./game/ai.worker.js",import.meta.url),{type:"module"});return()=>worker.current?.terminate()},[]);
  useEffect(()=>{
   if(!result||motionFx)return;
-  const losingSide=result.winner===HUMAN_SIDE?OPPONENT_SIDE:HUMAN_SIDE;
+  const losingSide=result.winner===humanSide?opponentSide:humanSide;
   const timers=[];
   setFinishFxDone(false);
+  setResultRevealReady(false);
   if(result.reason==="ema-safe-try"){
    setFinishFx({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
    playVoice("try");
@@ -89,10 +92,16 @@ export default function App(){
    timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true)},2700));
   }
   return()=>timers.forEach(clearTimeout);
- },[result,motionFx]);
+ },[result,motionFx,humanSide,opponentSide]);
  useEffect(()=>{
-  if(gameOver||!worker.current)return;
-  if(state.turn===HUMAN_SIDE){worker.current.postMessage({type:"ponder",state,seen});return}
+  if(!result||!finishFxDone||resultVoicePlayed.current)return;
+  resultVoicePlayed.current=true;
+  const timer=setTimeout(()=>{setResultRevealReady(true);playSound(result.winner===humanSide?"victory.mp3":"defeat.mp3")},1000);
+  return()=>clearTimeout(timer);
+ },[result,finishFxDone,humanSide]);
+ useEffect(()=>{
+  if(!started||gameOver||!worker.current)return;
+  if(state.turn===humanSide){worker.current.postMessage({type:"ponder",state,seen});return}
   setThinking(true);
   const id=++request.current;
   const effectEndsAt=Math.max(performance.now(),motionFxRef.current?.endsAt??0);
@@ -112,32 +121,34 @@ export default function App(){
   };
   const effectRemainingMs=Math.max(0,effectEndsAt-performance.now());
   worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000});
- },[state,gameOver,seen]);
+ },[state,gameOver,seen,humanSide,started]);
 
  function play(action){
-  if(thinking||motionFx||state.turn!==HUMAN_SIDE||gameOver)return;
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
   beginMotion(action,state);
   setTimeline(x=>[...x,applyLegalAction(x[x.length-1],action)]);
   setSelected(null);setHandType(null);
  }
  function click(row,col){
-  if(thinking||motionFx||state.turn!==HUMAN_SIDE||gameOver)return;
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
   const choices=selectable.filter(a=>a.to[0]===row&&a.to[1]===col);
   if(choices.length){play(choices.find(a=>a.magic)||choices[0]);return}
   const piece=state.board[row][col];
-  if(piece?.side===HUMAN_SIDE){setSelected([row,col]);setHandType(null)}else setSelected(null);
+  if(piece?.side===humanSide){setSelected([row,col]);setHandType(null)}else setSelected(null);
  }
  function resign(){
   if(gameOver)return;
   request.current++;
-  worker.current?.postMessage({type:"reset"});
+ worker.current?.postMessage({type:"reset"});
+  resultVoicePlayed.current=true;
+  playSound("defeat.mp3");
   setThinking(false);setSelected(null);setHandType(null);setResigned(true);
  }
  function reset(){
   if(!gameOver)return;
   request.current++;
   worker.current?.postMessage({type:"reset"});
-  motionFxRef.current=null;setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setMotionFx(null);
+  motionFxRef.current=null;resultVoicePlayed.current=false;setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);playSound("match-start.mp3");
  }
  function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
@@ -171,12 +182,12 @@ export default function App(){
  }
 
  const targets=new Map(selectable.map(a=>[`${a.to[0]},${a.to[1]}`,a]));
- const endMessage=resigned?"投了しました — 後手の勝ち":result&&finishFxDone?`${result.winner==="sente"?"先手":"後手"}の勝ち`:"";
+ const endMessage=resigned?"敗北…":result&&finishFxDone&&resultRevealReady?(result.winner===humanSide?"勝利！":"敗北…"):"";
  const pieceFxClass=piece=>{
   if(!piece||piece.type!=="ema"||!finishFx)return"";
   if((finishFx.phase==="try-transform"||finishFx.phase==="try-arrow")&&piece.side===finishFx.winner)return" ema--try-glow";
   if(finishFx.phase==="loser-shake"&&piece.side===finishFx.losingSide)return" ema--loser-shake";
-  if(finishFx.phase==="loser-fall"&&piece.side===finishFx.losingSide)return` ema--loser-fall ema--loser-fall-${piece.side}`;
+  if(finishFx.phase==="loser-fall"&&piece.side===finishFx.losingSide)return` ema--loser-fall ema--loser-fall-${piece.side===humanSide?"sente":"gote"}`;
   if(finishFx.phase==="done"&&piece.side===finishFx.losingSide)return" ema--gone";
   return"";
  };
@@ -184,6 +195,7 @@ export default function App(){
  const arrowFrom=finishFx&&findEmmaPosition(finishFx.winner),arrowTo=finishFx&&findEmmaPosition(finishFx.losingSide);
  const showTryArrow=finishFx?.phase==="try-arrow"&&arrowFrom&&arrowTo;
  const showNanokaShot=Boolean(motionFx?.isNanokaShot&&motionFx.action.from&&motionFx.captureAt);
+ const toVisual=([r,c])=>humanSide==="sente"?[r,c]:[5-r,5-c];
  const motionClass=(piece,r,c)=>{
   if(!motionFx||!piece||piece.side!==motionFx.mover)return"";
   if(motionFx.action.swap&&c===motionFx.action.from[1]&&r===motionFx.action.from[0])return" motion-swap-return";
@@ -197,10 +209,12 @@ export default function App(){
  const motionStyle=(r,c,moveClass)=>{
   if(!moveClass)return undefined;
   if(moveClass.includes("motion-drop"))return dropStyle(r,c);
-  if(moveClass.includes("motion-swap-return"))return {"--move-x":`${(motionFx.action.to[1]-c)*100}%`,"--move-y":`${(motionFx.action.to[0]-r)*100}%`};
-  return motionFx?.action.from?{"--move-x":`${(motionFx.action.from[1]-c)*100}%`,"--move-y":`${(motionFx.action.from[0]-r)*100}%`}:undefined;
+  const direction=humanSide==="sente"?1:-1;
+  if(moveClass.includes("motion-swap-return"))return {"--move-x":`${(motionFx.action.to[1]-c)*100*direction}%`,"--move-y":`${(motionFx.action.to[0]-r)*100*direction}%`};
+  return motionFx?.action.from?{"--move-x":`${(motionFx.action.from[1]-c)*100*direction}%`,"--move-y":`${(motionFx.action.from[0]-r)*100*direction}%`}:undefined;
  };
  const captureOrder={sherry:0,hanna:1,hiro:2,nanoka:3,margo:4};
+ const captureTargetIndex=motionFx?.captured?(motionFx.mover===humanSide?captureOrder[motionFx.captured.type]:4-captureOrder[motionFx.captured.type]):2;
  const visibleHand=side=>{
   const pieces=state.hands[side];
   if(!motionFx?.captured||motionFx.captured.type==="ema"||motionFx.mover!==side)return pieces;
@@ -211,22 +225,39 @@ export default function App(){
  const dropStyle=(r,c)=>{
   if(motionFx?.action.category!=="drop")return undefined;
   const orderIndex=HAND_ORDER.indexOf(motionFx.moving.type);
-  const visualIndex=motionFx.mover===HUMAN_SIDE?orderIndex:HAND_ORDER.length-1-orderIndex;
-  const sourceColumn=motionFx.mover===HUMAN_SIDE?6.72:-.72;
+  const visualIndex=motionFx.mover===humanSide?orderIndex:HAND_ORDER.length-1-orderIndex;
+  const sourceColumn=motionFx.mover===humanSide?6.72:-.72;
   const sourceRow=(visualIndex+.5)*6/HAND_ORDER.length-.5;
-  return {"--drop-x":`${(sourceColumn-c)*100}%`,"--drop-y":`${(sourceRow-r)*100}%`};
+  const [visualRow,visualColumn]=toVisual([r,c]);
+  return {"--drop-x":`${(sourceColumn-visualColumn)*100}%`,"--drop-y":`${(sourceRow-visualRow)*100}%`};
  };
+
+ const visualCells=Array.from({length:36},(_,index)=>{
+  const visualRow=Math.floor(index/6),visualColumn=index%6;
+  const [row,column]=humanSide==="sente"?[visualRow,visualColumn]:[5-visualRow,5-visualColumn];
+  return{row,column};
+ });
+ const captureVisual=motionFx?.captureAt?toVisual(motionFx.captureAt):null;
+ const shotFrom=showNanokaShot?toVisual(motionFx.action.from):null,shotTo=showNanokaShot?toVisual(motionFx.captureAt):null;
+ const tryFrom=showTryArrow?toVisual(arrowFrom):null,tryTo=showTryArrow?toVisual(arrowTo):null;
+
+ if(!started)return <main className="title-screen">
+  <div className="title-screen__shade" aria-hidden="true"/>
+  <div className="title-screen__actions">
+   <button className="title-screen__start" onClick={()=>{setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true)}}>ゲーム開始</button>
+   <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
+  </div>
+ </main>;
 
  return <div className="app-shell">
   <header className="topbar">
    <div className="branding"><div className="eyebrow">MANOSABA SHOGI AI</div><h1>魔法少女ノ魔法将棋</h1></div>
    <div className="match-actions"><button className="rematch-button" onClick={reset} disabled={!canRematch}>再対局</button><button className="resign-button" onClick={resign} disabled={gameOver}>投了</button></div>
   </header>
-  {endMessage&&<div className="result-banner" role="status">{endMessage}</div>}
   <main className="game-stage">
-   <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(OPPONENT_SIDE)} disabled activeType={null} onPick={()=>{}} perspective={HUMAN_SIDE} reverse/>
-   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(motionFx.action.from[1]+.5)*100} y1={(motionFx.action.from[0]+.5)*100} x2={(motionFx.captureAt[1]+.5)*100} y2={(motionFx.captureAt[0]+.5)*100} pathLength="1"/><circle cx={(motionFx.captureAt[1]+.5)*100} cy={(motionFx.captureAt[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
-   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(HUMAN_SIDE)} disabled={state.turn!==HUMAN_SIDE||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={HUMAN_SIDE}/>
+   <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(opponentSide)} disabled activeType={null} onPick={()=>{}} perspective={humanSide} reverse/>
+   <div className="board-frame"><div className="board-container"><div className="board">{visualCells.map(({row:r,column:c})=>{const key=`${r},${c}`,piece=state.board[r][c],target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} perspective={humanSide} promotedOverride={promotedOverride}/></div>}</button>})}</div>{motionFx?.captured&&captureVisual&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${captureVisual[1]*100/6}%`,top:`${captureVisual[0]*100/6}%`,"--capture-left":motionFx.mover===humanSide?"104%":"-21%","--capture-top":`${(captureTargetIndex??2)*20+3}%`,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}} perspective={humanSide}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(shotFrom[1]+.5)*100} y1={(shotFrom[0]+.5)*100} x2={(shotTo[1]+.5)*100} y2={(shotTo[0]+.5)*100} pathLength="1"/><circle cx={(shotTo[1]+.5)*100} cy={(shotTo[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(tryFrom[1]+.5)*100} y1={(tryFrom[0]+.5)*100} x2={(tryTo[1]+.5)*100} y2={(tryTo[0]+.5)*100} pathLength="1"/></svg>}{endMessage&&<div className={`result-overlay ${endMessage.startsWith("勝利")?"result-overlay--win":"result-overlay--lose"}`} role="status"><div className="result-overlay__panel"><div className="result-overlay__text">{endMessage}</div><button className="result-overlay__again" onClick={reset}>もう一回</button></div></div>}</div></div>
+   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={humanSide}/>
   </main>
  </div>;
 }
