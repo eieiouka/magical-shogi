@@ -13,7 +13,7 @@ button { font: inherit; }
 
 .title-screen {
   --title-art-height: 46.9436vw;
-  --title-logo-y: -13.15vw;
+  --title-logo-y: -1vw;
   --title-actions-y: 13.15vw;
   position: relative; width: 100%; min-height: 100svh; overflow: hidden;
   background-color: #000;
@@ -254,8 +254,8 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   .hand-piece { width:auto; height:100%; max-width:none; }
   .hand-empty { font-size: clamp(9px,2.6vw,13px); padding-top: 8px; }
   .piece-name,.piece--compact .piece-name { font-size: clamp(6px,1.25vw,10px); }
-  .title-screen { --title-logo-y:-30vw; --title-actions-y:30vw; }
-  .title-screen__logo { font-size:7.6vw; letter-spacing:.06em; }
+  .title-screen { --title-logo-y:-56vw; --title-actions-y:56vw; }
+  .title-screen__logo { font-size:9vw; letter-spacing:.06em; }
   .title-screen__actions { width:86vw; gap:2.5vw; }
   .title-screen__start,.title-screen__shop { min-height:14vw; padding:3vw 4.5vw; border-radius:3vw; font-size:4.4vw; letter-spacing:.08em; }
 }
