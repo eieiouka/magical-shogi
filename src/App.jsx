@@ -207,7 +207,6 @@ export default function App(){
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
   const sounds=[];
   if(actionVoice)sounds.push(playVoice(actionVoice));
-  if(isNanokaShot)sounds.push(playSound("nanoka-shot.mp3"));
   if(sounds.length)await Promise.all(sounds);
   const impactDelay=isNanokaShot?320:0;
   const duration=isNanokaShot?1050:captured?720:action.category==="drop"?470:550;
