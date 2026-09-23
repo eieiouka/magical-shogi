@@ -12,6 +12,9 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: #11100f; }
 button { font: inherit; }
 
 .title-screen {
+  --title-art-height: 46.9436vw;
+  --title-logo-y: -1vw;
+  --title-actions-y: 13.15vw;
   position: relative; width: 100%; min-height: 100svh; overflow: hidden;
   background-color: #000;
   background-image: url("/images/title-nanoka.png");
@@ -23,8 +26,18 @@ button { font: inherit; }
   position: absolute; top: 50%; left: 0; width: 100%; aspect-ratio: 1276 / 599; transform: translateY(-50%); pointer-events: none;
   background: linear-gradient(180deg,rgba(5,7,12,.03) 34%,rgba(5,7,12,.55) 100%);
 }
+.title-screen__logo {
+  position:absolute; z-index:2; left:50%; top:calc(50% + var(--title-logo-y)); transform:translate(-50%,-50%);
+  width:94vw; margin:0; text-align:center; white-space:nowrap;
+  font-family:"Yu Mincho","Hiragino Mincho ProN","HGS明朝E","Noto Serif JP",serif;
+  font-size:4.8vw; font-weight:800; letter-spacing:.075em; color:#fff2ce;
+  -webkit-text-stroke:.045em rgba(45,20,10,.96);
+  paint-order:stroke fill;
+  text-shadow:0 .075em .06em #000,0 0 .18em #000,0 0 .42em rgba(238,183,91,.72);
+  pointer-events:none;
+}
 .title-screen__actions {
-  position: absolute; z-index: 1; left: 50%; top: 50svh; transform: translate(-50%,-50%);
+  position: absolute; z-index: 1; left: 50%; top: calc(50% + var(--title-actions-y)); transform: translate(-50%,-50%);
   width: 40vw; display: grid; gap: 1.35vw;
 }
 .title-screen__start,.title-screen__shop {
@@ -223,7 +236,7 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
 .hand--opponent .hand-pieces { justify-content: flex-end; }
 .hand--opponent .hand-pieces--empty,.hand-pieces--empty { justify-content: flex-start; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px) and (hover: none) and (pointer: coarse) {
   :root { --board-size: 96vw; --stage-gap: 1.5vw; }
   .app-shell { padding: 8px 2vw; }
   .topbar { width:var(--board-size); min-height: 0; margin-bottom: 5px; }
@@ -241,6 +254,8 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   .hand-piece { width:auto; height:100%; max-width:none; }
   .hand-empty { font-size: clamp(9px,2.6vw,13px); padding-top: 8px; }
   .piece-name,.piece--compact .piece-name { font-size: clamp(6px,1.25vw,10px); }
-  .title-screen__actions { top:80svh; width:86vw; gap:2.5vw; }
+  .title-screen { --title-logo-y:-56vw; --title-actions-y:56vw; }
+  .title-screen__logo { font-size:9vw; letter-spacing:.06em; }
+  .title-screen__actions { width:86vw; gap:2.5vw; }
   .title-screen__start,.title-screen__shop { min-height:14vw; padding:3vw 4.5vw; border-radius:3vw; font-size:4.4vw; letter-spacing:.08em; }
 }

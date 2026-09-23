@@ -5,6 +5,7 @@ import {stateKey} from "./game/aiEngine.js";
 
 const randomSide=()=>Math.random()<.5?"sente":"gote";
 const HAND_ORDER=["sherry","hanna","hiro","nanoka","margo"];
+const MOBILE_LAYOUT_QUERY="(max-width: 760px) and (hover: none) and (pointer: coarse)";
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
 // character and line do not, so sente/gote suffixes only duplicated assets.
@@ -60,7 +61,7 @@ export default function App(){
  const [finishFxDone,setFinishFxDone]=useState(false);
  const [resultRevealReady,setResultRevealReady]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
- const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia("(max-width: 760px)").matches);
+ const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
  const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),resultVoicePlayed=useRef(false);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
@@ -73,7 +74,7 @@ export default function App(){
 
  useEffect(()=>{worker.current=new Worker(new URL("./game/ai.worker.js",import.meta.url),{type:"module"});return()=>worker.current?.terminate()},[]);
  useEffect(()=>{
-  const query=window.matchMedia("(max-width: 760px)");
+  const query=window.matchMedia(MOBILE_LAYOUT_QUERY);
   const update=()=>setMobileLayout(query.matches);
   update();query.addEventListener?.("change",update);
   return()=>query.removeEventListener?.("change",update);
@@ -253,6 +254,7 @@ export default function App(){
 
  if(!started)return <main className="title-screen">
   <div className="title-screen__shade" aria-hidden="true"/>
+  <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
   <div className="title-screen__actions">
    <button className="title-screen__start" onClick={()=>{setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true)}}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
