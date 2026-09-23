@@ -11,6 +11,22 @@ const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // character and line do not, so sente/gote suffixes only duplicated assets.
 const voiceFor=event=>`/audio/${event}.mp3`;
 const activeAudio=new Set();
+let nanokaAudioContext=null,nanokaAudioBufferPromise=null;
+const unlockNanokaSound=()=>{
+ const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+ if(!AudioContextClass)return;
+ if(!nanokaAudioContext)nanokaAudioContext=new AudioContextClass();
+ nanokaAudioContext.resume().catch(()=>{});
+ if(!nanokaAudioBufferPromise)nanokaAudioBufferPromise=fetch("/audio/magic-nanoka.mp3",{cache:"force-cache"})
+  .then(response=>{if(!response.ok)throw new Error(`magic-nanoka.mp3: ${response.status}`);return response.arrayBuffer()})
+  .then(bytes=>nanokaAudioContext.decodeAudioData(bytes))
+  .catch(()=>null);
+ // The silent buffer starts inside the user's tap and permanently unlocks this
+ // AudioContext for later CPU moves on mobile browsers.
+ const buffer=nanokaAudioContext.createBuffer(1,1,nanokaAudioContext.sampleRate);
+ const source=nanokaAudioContext.createBufferSource();
+ source.buffer=buffer;source.connect(nanokaAudioContext.destination);source.start();
+};
 const playSound=file=>new Promise(resolve=>{
  const audio=new Audio(`/audio/${file}`);
  activeAudio.add(audio);
@@ -23,7 +39,17 @@ const playSound=file=>new Promise(resolve=>{
  audio.addEventListener("error",()=>{finished();started()},{once:true});
  audio.play().catch(()=>{finished();started()});
 });
-const playVoice=event=>playSound(`${event}.mp3`);
+const playNanokaMagic=async()=>{
+ try{
+  if(!nanokaAudioContext||!nanokaAudioBufferPromise)return playSound("magic-nanoka.mp3");
+  if(nanokaAudioContext.state!=="running")await nanokaAudioContext.resume();
+  const buffer=await nanokaAudioBufferPromise;
+  if(!buffer)return playSound("magic-nanoka.mp3");
+  const source=nanokaAudioContext.createBufferSource();
+  source.buffer=buffer;source.connect(nanokaAudioContext.destination);source.start();
+ }catch{return playSound("magic-nanoka.mp3")}
+};
+const playVoice=event=>event==="magic-nanoka"?playNanokaMagic():playSound(`${event}.mp3`);
 const actionVoiceFor=(action,piece,givesCheck=false)=>{
  if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return null;
@@ -203,8 +229,8 @@ export default function App(){
   const captured=captureAt?before.board[captureAt[0]][captureAt[1]]:null;
   // A terminal win owns the voice channel. Do not overlap its checkmate/try
   // sequence with promotion or magic voices from the winning move.
-  const actionVoice=moving&&!moveResult?actionVoiceFor(action,moving,givesCheck):null;
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
+  const actionVoice=moving&&!moveResult?actionVoiceFor(action,moving,givesCheck):null;
   const sounds=[];
   if(actionVoice)sounds.push(playVoice(actionVoice));
   if(sounds.length)await Promise.all(sounds);
@@ -293,7 +319,7 @@ export default function App(){
   <div className="title-screen__shade" aria-hidden="true"/>
   <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
   <div className="title-screen__actions">
-   <button className="title-screen__start" onClick={async()=>{await playSound("match-start.mp3");setHumanSide(randomSide());setStarted(true)}}>ゲーム開始</button>
+   <button className="title-screen__start" onClick={async()=>{unlockNanokaSound();await playSound("match-start.mp3");setHumanSide(randomSide());setStarted(true)}}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
   </div>
  </main>;
