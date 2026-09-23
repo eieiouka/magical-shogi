@@ -131,7 +131,6 @@ export default function App(){
  const result=useMemo(()=>terminalResult(state),[state]);
  const checkedSide=!result&&isEmmaInCheck(state,state.turn)?state.turn:null;
  const gameOver=Boolean(result||resigned);
- const canRematch=Boolean(resigned||(result&&finishFxDone));
  const seen=useMemo(()=>timeline.map(stateKey),[timeline]);
  const legal=useMemo(()=>gameOver?[]:generateAllLegalActions(state),[state,gameOver]);
  const selectable=useMemo(()=>legal.filter(a=>a.category==="drop"?handType!==null&&a.piece.type===handType:selected&&a.from?.[0]===selected[0]&&a.from?.[1]===selected[1]),[legal,selected,handType]);
@@ -353,7 +352,7 @@ export default function App(){
  return <div className="app-shell">
   <header className="topbar">
    <div className="branding"><div className="eyebrow">MANOSABA SHOGI AI</div><h1>魔法少女ノ魔法将棋</h1></div>
-   <div className="match-actions"><button className="rematch-button" onClick={()=>setDifficultyPrompt("rematch")} disabled={!canRematch}>再対局</button><button className="resign-button" onClick={resign} disabled={gameOver}>投了</button></div>
+   <div className="match-actions"><button className="resign-button" onClick={resign} disabled={gameOver}>投了</button></div>
   </header>
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(opponentSide)} disabled activeType={null} onPick={()=>{}} perspective={humanSide} reverse/>
