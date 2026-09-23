@@ -155,7 +155,7 @@ export default function App(){
    waitForFx();
   };
   const effectRemainingMs=Math.max(0,effectEndsAt-performance.now());
-  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000,mobile:mobileLayout});
+  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000});
  },[state,gameOver,seen,humanSide,started]);
 
  async function commitAction(action,before){
@@ -207,6 +207,7 @@ export default function App(){
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
   const sounds=[];
   if(actionVoice)sounds.push(playVoice(actionVoice));
+  if(isNanokaShot)sounds.push(playSound("nanoka-shot.mp3"));
   if(sounds.length)await Promise.all(sounds);
   const impactDelay=isNanokaShot?320:0;
   const duration=isNanokaShot?1050:captured?720:action.category==="drop"?470:550;
