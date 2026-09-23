@@ -102,6 +102,8 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   width: var(--board-size); height: var(--board-size); padding: 7px;
   background: #2a211b; border: 1px solid #5c4534;
 }
+.board-stack { width:var(--board-size); }
+.board-note { margin:8px 0 0; color:#cfc5b9; font-size:clamp(11px,1.25vw,14px); line-height:1.55; text-align:center; }
 .board-container { position: relative; width: 100%; height: 100%; }
 .board {
   position: absolute; inset: 0; display: grid;
@@ -244,8 +246,14 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   h1 { font-size: clamp(13px,2.8vw,21px); }
   .match-actions { gap: 4px; }
   .match-actions button { font-size: clamp(9px,1.7vw,13px); }
-  .game-stage { width:var(--board-size); grid-template-columns:var(--board-size); grid-template-rows:auto var(--board-size) auto; gap:var(--stage-gap); }
+  .game-stage { width:var(--board-size); grid-template-columns:var(--board-size); grid-template-rows:auto auto auto; gap:var(--stage-gap); }
+  .hand--opponent { order:1; }
+  .board-stack { display:contents; }
+  .board-frame { order:2; }
+  .hand--player { order:3; }
+  .board-note { order:4; }
   .board-frame { width:var(--board-size); height:var(--board-size); padding:clamp(3px,1vw,7px); }
+  .board-note { margin-top:1.5vw; font-size:clamp(10px,2.7vw,13px); }
   .hand { width:var(--board-size); height:clamp(78px,22vw,112px); padding:clamp(3px,.7vw,7px); }
   .hand-title { font-size: clamp(7px,1.3vw,12px); margin-bottom: 4px; }
   .hand-pieces { flex-direction:row; width:100%; gap:1vw; justify-content:flex-start; }
@@ -295,4 +303,33 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   .difficulty-options button { padding:4vw 1vw; border-radius:2.5vw; }
   .difficulty-options strong { font-size:5vw; }
   .difficulty-dialog p { margin:5vw 0 4vw; font-size:3vw; }
+}
+
+/* Long-press movement guide. Existing layout values above remain untouched. */
+.square--guide-source { outline:4px solid #fff1a8; outline-offset:-4px; z-index:5; }
+.square--guide-normal { box-shadow:inset 0 0 0 5px rgba(255,222,91,.92),inset 0 0 22px rgba(255,221,75,.55); z-index:4; }
+.square--guide-magic { box-shadow:inset 0 0 0 5px rgba(255,69,85,.94),inset 0 0 24px rgba(255,34,58,.58); z-index:4; }
+.piece-guide {
+  position:fixed; z-index:900; left:50%; bottom:clamp(12px,2.2vh,24px); transform:translateX(-50%);
+  width:min(680px,92vw); padding:16px 18px 14px; border:1px solid rgba(244,205,133,.76); border-radius:16px;
+  background:linear-gradient(155deg,rgba(31,25,27,.97),rgba(10,10,13,.97)); color:#fff8ec;
+  box-shadow:0 14px 45px rgba(0,0,0,.68),0 0 22px rgba(202,145,72,.14); pointer-events:auto;
+}
+.piece-guide__heading { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.piece-guide__heading strong { font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif; font-size:clamp(18px,2.5vw,26px); letter-spacing:.08em; }
+.piece-guide__heading span { padding:3px 9px; border:1px solid #9c744e; border-radius:999px; color:#e9cda8; font-size:12px; font-weight:800; }
+.piece-guide__heading button { margin-left:auto; width:32px; height:32px; padding:0; border:1px solid rgba(255,255,255,.25); border-radius:50%; background:rgba(255,255,255,.06); color:#fff; cursor:pointer; }
+.piece-guide p { margin:6px 0; color:#eee4d8; font-size:clamp(12px,1.7vw,15px); line-height:1.55; }
+.piece-guide p b { display:inline-block; min-width:4.2em; margin-right:8px; color:#e9bd7d; }
+.piece-guide__move { padding:7px 10px; border-left:4px solid #ffde5b; background:rgba(255,222,91,.08); }
+.piece-guide__move b { color:#ffdf68 !important; }
+.piece-guide__ability { padding:7px 10px; border-left:4px solid #ff4555; background:rgba(255,69,85,.09); }
+.piece-guide__ability b { color:#ff8791 !important; }
+@media (max-width:520px) {
+  .piece-guide { bottom:2.5vw; width:94vw; padding:3.2vw 3.5vw 3vw; border-radius:3vw; }
+  .piece-guide__heading { gap:2vw; margin-bottom:1.5vw; }
+  .piece-guide__heading strong { font-size:5vw; }
+  .piece-guide__heading span { padding:.7vw 2vw; font-size:2.8vw; }
+  .piece-guide__heading button { width:8vw; height:8vw; }
+  .piece-guide p { margin:1.2vw 0; font-size:3.1vw; }
 }
