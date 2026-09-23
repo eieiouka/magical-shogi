@@ -15,10 +15,6 @@ const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
 // character and line do not, so sente/gote suffixes only duplicated assets.
 const activeAudio=new Set();
-const AUDIO_FILES=[
- "match-start.mp3","victory.mp3","defeat.mp3","try.mp3","arrow.mp3","checkmate.mp3","fall.mp3",
- ...["sherry","hanna","hiro","margo","nanoka"].flatMap(name=>[`check-${name}.mp3`,`promote-${name}.mp3`,`magic-${name}.mp3`]),
-];
 let sharedAudioContext=null;
 const audioBufferCache=new Map();
 const loadAudioBuffer=file=>{
@@ -40,7 +36,6 @@ const unlockAllSounds=()=>{
  const buffer=sharedAudioContext.createBuffer(1,1,sharedAudioContext.sampleRate);
  const source=sharedAudioContext.createBufferSource();
  source.buffer=buffer;source.connect(sharedAudioContext.destination);source.start();
- AUDIO_FILES.forEach(loadAudioBuffer);
 };
 const playHtmlSound=file=>new Promise(resolve=>{
  const audio=new Audio(`/audio/${file}`);
