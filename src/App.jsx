@@ -88,16 +88,16 @@ export default function App(){
   if(result.reason==="ema-safe-try"){
    setFinishFx({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
    playVoice("try");
-   timers.push(setTimeout(()=>setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current),900));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});playVoice("arrow")},3900));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});playVoice("checkmate")},6000));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});playVoice("fall")},8100));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true)},10350));
+   timers.push(setTimeout(()=>setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current),600));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});playVoice("arrow")},2600));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});playVoice("checkmate")},4000));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});playVoice("fall")},5400));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true)},6900));
   }else{
    setFinishFx({phase:"loser-shake",winner:result.winner,losingSide});
    playVoice("checkmate");
-   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide});playVoice("fall")},1950));
-   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true)},4050));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide});playVoice("fall")},1300));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true)},2700));
   }
   return()=>timers.forEach(clearTimeout);
  },[result,motionFx,humanSide,opponentSide]);
@@ -171,8 +171,8 @@ export default function App(){
   if(actionVoice)playVoice(actionVoice);
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
   if(isNanokaShot)playSound("nanoka-shot.mp3");
-  const impactDelay=isNanokaShot?480:0;
-  const duration=isNanokaShot?1575:captured?1080:action.category==="drop"?705:825;
+  const impactDelay=isNanokaShot?320:0;
+  const duration=isNanokaShot?1050:captured?720:action.category==="drop"?470:550;
   const id=++motionSequence.current;
   const fx={id,action,moving,mover:before.turn,captureAt,captured,capturedOriginalSide:captured?.side??null,isNanokaShot,impactReached:!isNanokaShot,impactDelay,promotionRevealed:!action.promote,endsAt:performance.now()+duration};
   motionFxRef.current=fx;setMotionFx(fx);
@@ -185,7 +185,7 @@ export default function App(){
    if(motionFxRef.current?.id!==id)return;
    const revealed={...motionFxRef.current,promotionRevealed:true};
    motionFxRef.current=revealed;setMotionFx(revealed);
-  },320);
+  },213);
   setTimeout(()=>{if(motionFxRef.current?.id===id)motionFxRef.current=null;setMotionFx(current=>current?.id===id?null:current)},duration);
  }
 
