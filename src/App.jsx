@@ -10,8 +10,44 @@ const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
 // character and line do not, so sente/gote suffixes only duplicated assets.
 const voiceFor=event=>`/audio/${event}.mp3`;
-const playVoice=event=>{const audio=new Audio(voiceFor(event));audio.play().catch(()=>{})};
-const playSound=file=>{const audio=new Audio(`/audio/${file}`);audio.play().catch(()=>{})};
+const AUDIO_FILES=[
+ "arrow.mp3","checkmate.mp3","fall.mp3","try.mp3","defeat.mp3","victory.mp3","match-start.mp3","nanoka-shot.mp3",
+ ...["hanna","hiro","margo","nanoka","sherry"].map(name=>`check-${name}.mp3`),
+ ...["hanna","margo","nanoka","sherry"].flatMap(name=>[`magic-${name}.mp3`,`promote-${name}.mp3`]),
+];
+let audioContext=null,audioWarmup=null;
+const audioBuffers=new Map(),fallbackAudio=new Map();
+const getAudioContext=()=>{
+ if(typeof window==="undefined")return null;
+ const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+ if(!AudioContextClass)return null;
+ return audioContext||(audioContext=new AudioContextClass());
+};
+const warmAudio=()=>{
+ const context=getAudioContext();
+ if(!context)return Promise.resolve();
+ // iOS/Android require resume() inside the user's tap handler. Once resumed,
+ // decode every effect up front so animation start never waits on MP3 decode.
+ context.resume().catch(()=>{});
+ if(audioWarmup)return audioWarmup;
+ audioWarmup=Promise.allSettled(AUDIO_FILES.map(async file=>{
+  const response=await fetch(`/audio/${file}`);
+  if(!response.ok)throw new Error(`${file}: ${response.status}`);
+  audioBuffers.set(file,await context.decodeAudioData(await response.arrayBuffer()));
+ }));
+ return audioWarmup;
+};
+const playSound=file=>{
+ const context=getAudioContext(),buffer=audioBuffers.get(file);
+ if(context&&buffer){
+  if(context.state!=="running")context.resume().catch(()=>{});
+  const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);source.start();return;
+ }
+ // Fallback is retained for the very first sound and browsers without Web Audio.
+ const audio=fallbackAudio.get(file)||new Audio(`/audio/${file}`);
+ fallbackAudio.set(file,audio);audio.currentTime=0;audio.play().catch(()=>{});
+};
+const playVoice=event=>playSound(`${event}.mp3`);
 const actionVoiceFor=(action,piece,givesCheck=false)=>{
  if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return null;
@@ -72,7 +108,13 @@ export default function App(){
  const legal=useMemo(()=>gameOver?[]:generateAllLegalActions(state),[state,gameOver]);
  const selectable=useMemo(()=>legal.filter(a=>a.category==="drop"?handType!==null&&a.piece.type===handType:selected&&a.from?.[0]===selected[0]&&a.from?.[1]===selected[1]),[legal,selected,handType]);
 
- useEffect(()=>{worker.current=new Worker(new URL("./game/ai.worker.js",import.meta.url),{type:"module"});return()=>worker.current?.terminate()},[]);
+ async function startMatch(){
+  // The short wait happens on the title screen, not during an effect.
+  await warmAudio();
+  setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true);
+ }
+
+ useEffect(()=>{warmAudio();worker.current=new Worker(new URL("./game/ai.worker.js",import.meta.url),{type:"module"});return()=>worker.current?.terminate()},[]);
  useEffect(()=>{
   const query=window.matchMedia(MOBILE_LAYOUT_QUERY);
   const update=()=>setMobileLayout(query.matches);
@@ -256,7 +298,7 @@ export default function App(){
   <div className="title-screen__shade" aria-hidden="true"/>
   <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
   <div className="title-screen__actions">
-   <button className="title-screen__start" onClick={()=>{setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true)}}>ゲーム開始</button>
+   <button className="title-screen__start" onClick={startMatch}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
   </div>
  </main>;
