@@ -10,20 +10,8 @@ const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
 // character and line do not, so sente/gote suffixes only duplicated assets.
 const voiceFor=event=>`/audio/${event}.mp3`;
-const activeAudio=new Set();
-const playSound=file=>new Promise(resolve=>{
- const audio=new Audio(`/audio/${file}`);
- activeAudio.add(audio);
- let settled=false;
- const started=()=>{if(settled)return;settled=true;clearTimeout(fallback);resolve()};
- const finished=()=>activeAudio.delete(audio);
- const fallback=setTimeout(started,1500);
- audio.addEventListener("playing",started,{once:true});
- audio.addEventListener("ended",finished,{once:true});
- audio.addEventListener("error",()=>{finished();started()},{once:true});
- audio.play().catch(()=>{finished();started()});
-});
-const playVoice=event=>playSound(`${event}.mp3`);
+const playVoice=event=>{const audio=new Audio(voiceFor(event));audio.play().catch(()=>{})};
+const playSound=file=>{const audio=new Audio(`/audio/${file}`);audio.play().catch(()=>{})};
 const actionVoiceFor=(action,piece,givesCheck=false)=>{
  if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return null;
@@ -73,7 +61,6 @@ export default function App(){
  const [finishFxDone,setFinishFxDone]=useState(false);
  const [resultRevealReady,setResultRevealReady]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
- const [audioSyncing,setAudioSyncing]=useState(false);
  const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
  const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),resultVoicePlayed=useRef(false);
  const state=timeline[timeline.length-1];
@@ -95,43 +82,29 @@ export default function App(){
  useEffect(()=>{
   if(!result||motionFx)return;
   const losingSide=result.winner===humanSide?opponentSide:humanSide;
-  const timers=[];let cancelled=false;
-  const wait=ms=>new Promise(resolve=>timers.push(setTimeout(resolve,ms)));
-  const syncPhase=async(voice,phase)=>{
-   await playVoice(voice);
-   if(!cancelled)setFinishFx(phase);
-  };
+  const timers=[];
   setFinishFxDone(false);
   setResultRevealReady(false);
-  const run=async()=>{
-   if(result.reason==="ema-safe-try"){
-    await syncPhase("try",{phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
-    if(cancelled)return;
-    await wait(600);if(cancelled)return;
-    setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current);
-    await wait(2000);if(cancelled)return;
-    await syncPhase("arrow",{phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});
-    await wait(1400);if(cancelled)return;
-    await syncPhase("checkmate",{phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});
-    await wait(1400);if(cancelled)return;
-    await syncPhase("fall",{phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});
-    await wait(1500);if(cancelled)return;
-    setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true);
-   }else{
-    await syncPhase("checkmate",{phase:"loser-shake",winner:result.winner,losingSide});
-    await wait(1300);if(cancelled)return;
-    await syncPhase("fall",{phase:"loser-fall",winner:result.winner,losingSide});
-    await wait(1400);if(cancelled)return;
-    setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true);
-   }
-  };
-  run();
-  return()=>{cancelled=true;timers.forEach(clearTimeout)};
+  if(result.reason==="ema-safe-try"){
+   setFinishFx({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
+   playVoice("try");
+   timers.push(setTimeout(()=>setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current),900));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});playVoice("arrow")},3900));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});playVoice("checkmate")},6000));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});playVoice("fall")},8100));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true)},10350));
+  }else{
+   setFinishFx({phase:"loser-shake",winner:result.winner,losingSide});
+   playVoice("checkmate");
+   timers.push(setTimeout(()=>{setFinishFx({phase:"loser-fall",winner:result.winner,losingSide});playVoice("fall")},1950));
+   timers.push(setTimeout(()=>{setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true)},4050));
+  }
+  return()=>timers.forEach(clearTimeout);
  },[result,motionFx,humanSide,opponentSide]);
  useEffect(()=>{
   if(!result||!finishFxDone||resultVoicePlayed.current)return;
   resultVoicePlayed.current=true;
-  const timer=setTimeout(async()=>{await playSound(result.winner===humanSide?"victory.mp3":"defeat.mp3");setResultRevealReady(true)},1000);
+  const timer=setTimeout(()=>{setResultRevealReady(true);playSound(result.winner===humanSide?"victory.mp3":"defeat.mp3")},1000);
   return()=>clearTimeout(timer);
  },[result,finishFxDone,humanSide]);
  useEffect(()=>{
@@ -145,7 +118,7 @@ export default function App(){
    if(data.id!==id)return;
    setThinking(false);
    if(data.error||!data.result)return;
-   const commit=()=>commitAction(data.result.action,state);
+   const commit=()=>{beginMotion(data.result.action,state);setTimeline(x=>[...x,applyLegalAction(x[x.length-1],data.result.action)])};
    const waitForFx=()=>{
     if(motionFxRef.current){setTimeout(waitForFx,40);return}
     const remaining=earliestCommitAt-performance.now();
@@ -158,43 +131,34 @@ export default function App(){
   worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000});
  },[state,gameOver,seen,humanSide,started]);
 
- async function commitAction(action,before){
-  setAudioSyncing(true);
-  await beginMotion(action,before);
-  setTimeline(x=>[...x,applyLegalAction(x[x.length-1],action)]);
-  setAudioSyncing(false);
- }
  function play(action){
-  if(thinking||motionFx||audioSyncing||state.turn!==humanSide||gameOver)return;
-  commitAction(action,state);
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
+  beginMotion(action,state);
+  setTimeline(x=>[...x,applyLegalAction(x[x.length-1],action)]);
   setSelected(null);setHandType(null);
  }
  function click(row,col){
-  if(thinking||motionFx||audioSyncing||state.turn!==humanSide||gameOver)return;
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
   const choices=selectable.filter(a=>a.to[0]===row&&a.to[1]===col);
   if(choices.length){play(choices.find(a=>a.magic)||choices[0]);return}
   const piece=state.board[row][col];
   if(piece?.side===humanSide){setSelected([row,col]);setHandType(null)}else setSelected(null);
  }
- async function resign(){
+ function resign(){
   if(gameOver)return;
   request.current++;
  worker.current?.postMessage({type:"reset"});
   resultVoicePlayed.current=true;
-  setAudioSyncing(true);
-  await playSound("defeat.mp3");
-  setAudioSyncing(false);
+  playSound("defeat.mp3");
   setThinking(false);setSelected(null);setHandType(null);setResigned(true);
  }
- async function reset(){
+ function reset(){
   if(!gameOver)return;
   request.current++;
   worker.current?.postMessage({type:"reset"});
-  setAudioSyncing(true);
-  await playSound("match-start.mp3");
-  motionFxRef.current=null;resultVoicePlayed.current=false;setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setAudioSyncing(false);
+  motionFxRef.current=null;resultVoicePlayed.current=false;setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);playSound("match-start.mp3");
  }
- async function beginMotion(action,before){
+ function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
   const after=applyLegalAction(before,action);
   const moveResult=terminalResult(after);
@@ -204,13 +168,11 @@ export default function App(){
   // A terminal win owns the voice channel. Do not overlap its checkmate/try
   // sequence with promotion or magic voices from the winning move.
   const actionVoice=moving&&!moveResult?actionVoiceFor(action,moving,givesCheck):null;
+  if(actionVoice)playVoice(actionVoice);
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
-  const sounds=[];
-  if(actionVoice)sounds.push(playVoice(actionVoice));
-  if(isNanokaShot)sounds.push(playSound("nanoka-shot.mp3"));
-  if(sounds.length)await Promise.all(sounds);
-  const impactDelay=isNanokaShot?320:0;
-  const duration=isNanokaShot?1050:captured?720:action.category==="drop"?470:550;
+  if(isNanokaShot)playSound("nanoka-shot.mp3");
+  const impactDelay=isNanokaShot?480:0;
+  const duration=isNanokaShot?1575:captured?1080:action.category==="drop"?705:825;
   const id=++motionSequence.current;
   const fx={id,action,moving,mover:before.turn,captureAt,captured,capturedOriginalSide:captured?.side??null,isNanokaShot,impactReached:!isNanokaShot,impactDelay,promotionRevealed:!action.promote,endsAt:performance.now()+duration};
   motionFxRef.current=fx;setMotionFx(fx);
@@ -223,7 +185,7 @@ export default function App(){
    if(motionFxRef.current?.id!==id)return;
    const revealed={...motionFxRef.current,promotionRevealed:true};
    motionFxRef.current=revealed;setMotionFx(revealed);
-  },213);
+  },320);
   setTimeout(()=>{if(motionFxRef.current?.id===id)motionFxRef.current=null;setMotionFx(current=>current?.id===id?null:current)},duration);
  }
 
@@ -294,7 +256,7 @@ export default function App(){
   <div className="title-screen__shade" aria-hidden="true"/>
   <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
   <div className="title-screen__actions">
-   <button className="title-screen__start" onClick={async()=>{await playSound("match-start.mp3");setHumanSide(randomSide());setStarted(true)}}>ゲーム開始</button>
+   <button className="title-screen__start" onClick={()=>{setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true)}}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
   </div>
  </main>;
@@ -307,7 +269,7 @@ export default function App(){
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(opponentSide)} disabled activeType={null} onPick={()=>{}} perspective={humanSide} reverse/>
    <div className="board-frame"><div className="board-container"><div className="board">{visualCells.map(({row:r,column:c})=>{const key=`${r},${c}`,piece=state.board[r][c],target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} perspective={humanSide} promotedOverride={promotedOverride}/></div>}</button>})}</div>{motionFx?.captured&&captureVisual&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${captureVisual[1]*100/6}%`,top:`${captureVisual[0]*100/6}%`,...captureDestination,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}} perspective={humanSide}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(shotFrom[1]+.5)*100} y1={(shotFrom[0]+.5)*100} x2={(shotTo[1]+.5)*100} y2={(shotTo[0]+.5)*100} pathLength="1"/><circle cx={(shotTo[1]+.5)*100} cy={(shotTo[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(tryFrom[1]+.5)*100} y1={(tryFrom[0]+.5)*100} x2={(tryTo[1]+.5)*100} y2={(tryTo[0]+.5)*100} pathLength="1"/></svg>}{endMessage&&<div className={`result-overlay ${endMessage.startsWith("勝利")?"result-overlay--win":"result-overlay--lose"}`} role="status"><div className="result-overlay__panel"><div className="result-overlay__text">{endMessage}</div><button className="result-overlay__again" onClick={reset}>もう一回</button></div></div>}</div></div>
-   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||audioSyncing||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={humanSide}/>
+   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={humanSide}/>
   </main>
  </div>;
 }

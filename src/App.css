@@ -259,3 +259,15 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   .title-screen__actions { width:86vw; gap:2.5vw; }
   .title-screen__start,.title-screen__shop { min-height:14vw; padding:3vw 4.5vw; border-radius:3vw; font-size:4.4vw; letter-spacing:.08em; }
 }
+
+/* Audio stays non-blocking. Only the visual effects run at 1.5x duration. */
+.motion-slide,.motion-float,.motion-dash,.motion-jump,.motion-swap-return { animation-duration:.675s; }
+.motion-drop { animation-duration:.57s; }
+.motion-drop::after { animation-duration:.36s; animation-delay:.45s; }
+.motion-promote .piece img { animation-duration:.638s; }
+.capture-fly { animation-duration:1s; }
+.ema--try-glow .piece img { animation-duration:1.8s,1.95s; animation-delay:0s,1.8s; }
+.ema--loser-fall-sente,.ema--loser-fall-gote { animation-duration:2.1s; }
+.try-arrow line { animation-duration:2.025s; }
+.nanoka-shot line { animation-duration:.48s; }
+.nanoka-shot circle { animation-duration:.42s; animation-delay:.42s; }
