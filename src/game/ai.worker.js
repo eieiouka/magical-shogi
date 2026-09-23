@@ -54,7 +54,7 @@ const wasmReady=(async()=>{
 
 async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
   if(await fairyReady){
-    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=15 budget=${timeLimitMs}ms`);
+    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish targetDepth=${target} minDepth=${minDepth} budget=${timeLimitMs}ms`);
     const id=++fairySequence;
     const result=await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{fairyPending.delete(id);reject(new Error("Fairy-Stockfish search timeout"))},Math.max(120000,timeLimitMs+10000));
@@ -91,10 +91,12 @@ self.onmessage=async({data})=>{
     return
   }
   try{
-    const targetDepth=UNBOUNDED_DEPTH;
+    const mobileDepth=13;
+    const targetDepth=data.mobile?mobileDepth:UNBOUNDED_DEPTH;
+    const minDepth=data.mobile?mobileDepth:7;
     const timeLimitMs=Math.max(500,data.timeLimitMs??500);
     const startedAt=performance.now();
-    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,7,0);
+    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,minDepth,0);
     const elapsed=Math.max(1,performance.now()-startedAt);
     const nps=result?.nodes?Math.round(result.nodes*1000/elapsed):"?";
     console.info(`[魔法将棋AI] engine=${result?.engine??"javascript"} depth=${result?.depth??"?"} nodes=${result?.nodes??"?"} elapsed=${Math.round(elapsed)}ms nps=${nps}`);
