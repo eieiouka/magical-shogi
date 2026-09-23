@@ -75,7 +75,6 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
 .motion-promote .piece img { animation: piece-promote-flip .425s ease-in-out; transform-style: preserve-3d; }
 .motion-promote .piece-fallback,.ema--try-glow .piece-fallback { visibility: hidden; }
 .capture-fly { position: absolute; z-index: 45; width: calc(100% / 6); height: calc(100% / 6); pointer-events: none; animation: captured-to-hand .667s cubic-bezier(.2,.65,.35,1) var(--capture-delay,0ms) both; }
-.capture-fly--waiting { animation: none; }
 @keyframes piece-slide { from { transform: translate(var(--move-x),var(--move-y)); } to { transform: translate(0,0); } }
 @keyframes piece-float { 0% { transform:translate(var(--move-x),var(--move-y)) rotateX(0deg);filter:none; } 50% { filter:brightness(1.12); } 100% { transform:translate(0,0) rotateX(360deg);filter:none; } }
 @keyframes piece-dash { 0% { transform:translate(var(--move-x),var(--move-y)) scaleY(1.08);filter:blur(2px) brightness(1.5); } 35% { filter:blur(1px) brightness(1.35); } 100% { transform:translate(0,0);filter:none; } }

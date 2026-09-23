@@ -12,10 +12,10 @@ const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 const voiceFor=event=>`/audio/${event}.mp3`;
 const playVoice=event=>{const audio=new Audio(voiceFor(event));audio.play().catch(()=>{})};
 const playSound=file=>{const audio=new Audio(`/audio/${file}`);audio.play().catch(()=>{})};
-const actionVoiceFor=(action,piece,givesCheck=false,escapedCheck=false,captured=null)=>{
+const actionVoiceFor=(action,piece,givesCheck=false)=>{
  if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return null;
- if(piece.type==="ema")return escapedCheck?"escape-ema":null;
+ if(piece.type==="ema")return null;
  // Sherry's two-square advance is her magic. Her diagonal capture is silent,
  // except when that move also promotes. Promotion wins over a simultaneous rush.
  if(piece.type==="sherry"){
@@ -24,8 +24,8 @@ const actionVoiceFor=(action,piece,givesCheck=false,escapedCheck=false,captured=
   if(action.promote)return"promote-sherry";
   return null;
  }
- if(action.magic)return`magic-${piece.type}`;
  if(action.promote)return`promote-${piece.type}`;
+ if(action.magic)return`magic-${piece.type}`;
  return null;
 };
 
@@ -143,12 +143,12 @@ export default function App(){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
   const after=applyLegalAction(before,action);
   const moveResult=terminalResult(after);
-  const isEmmaPromotion=moveResult?.reason==="ema-safe-try"&&moveResult.winner===before.turn;
   const givesCheck=!moveResult&&isEmmaInCheck(after,after.turn);
   const captureAt=action.swap?null:action.captureAt??(before.board[action.to[0]][action.to[1]]?[...action.to]:null);
   const captured=captureAt?before.board[captureAt[0]][captureAt[1]]:null;
-  const escapedCheck=Boolean(moving?.type==="ema"&&isEmmaInCheck(before,before.turn)&&!isEmmaInCheck(after,before.turn));
-  const actionVoice=moving&&!isEmmaPromotion?actionVoiceFor(action,moving,givesCheck,escapedCheck,captured):null;
+  // A terminal win owns the voice channel. Do not overlap its checkmate/try
+  // sequence with promotion or magic voices from the winning move.
+  const actionVoice=moving&&!moveResult?actionVoiceFor(action,moving,givesCheck):null;
   if(actionVoice)playVoice(actionVoice);
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
   if(isNanokaShot)playSound("nanoka-shot.mp3");
@@ -161,7 +161,6 @@ export default function App(){
    if(motionFxRef.current?.id!==id)return;
    const impacted={...motionFxRef.current,impactReached:true,impactDelay:0};
    motionFxRef.current=impacted;setMotionFx(impacted);
-   playVoice(`damage-${captured.type}`);
   },impactDelay);
   if(action.promote)setTimeout(()=>{
    if(motionFxRef.current?.id!==id)return;
@@ -226,7 +225,7 @@ export default function App(){
   {endMessage&&<div className="result-banner" role="status">{endMessage}</div>}
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(OPPONENT_SIDE)} disabled activeType={null} onPick={()=>{}} perspective={HUMAN_SIDE} reverse/>
-   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),fxClass=pieceFxClass(piece),moveClass=motionClass(piece,r,c),checkClass=piece?.type==="ema"&&piece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(piece?.type==="ema"&&result?.reason==="ema-safe-try"&&piece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{piece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={piece} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&<div className={`capture-fly capture-fly--${motionFx.mover}${motionFx.isNanokaShot&&!motionFx.impactReached?" capture-fly--waiting":""}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(motionFx.action.from[1]+.5)*100} y1={(motionFx.action.from[0]+.5)*100} x2={(motionFx.captureAt[1]+.5)*100} y2={(motionFx.captureAt[0]+.5)*100} pathLength="1"/><circle cx={(motionFx.captureAt[1]+.5)*100} cy={(motionFx.captureAt[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
+   <div className="board-frame"><div className="board-container"><div className="board">{state.board.map((row,r)=>row.map((piece,c)=>{const key=`${r},${c}`,target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} promotedOverride={promotedOverride}/></div>}</button>}))}</div>{motionFx?.captured&&motionFx.captureAt&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${motionFx.captureAt[1]*100/6}%`,top:`${motionFx.captureAt[0]*100/6}%`,"--capture-left":motionFx.mover===HUMAN_SIDE?"104%":"-21%","--capture-top":`${(captureOrder[motionFx.captured.type]??2)*20+3}%`,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(motionFx.action.from[1]+.5)*100} y1={(motionFx.action.from[0]+.5)*100} x2={(motionFx.captureAt[1]+.5)*100} y2={(motionFx.captureAt[0]+.5)*100} pathLength="1"/><circle cx={(motionFx.captureAt[1]+.5)*100} cy={(motionFx.captureAt[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(arrowFrom[1]+.5)*100} y1={(arrowFrom[0]+.5)*100} x2={(arrowTo[1]+.5)*100} y2={(arrowTo[0]+.5)*100} pathLength="1"/></svg>}</div></div>
    <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(HUMAN_SIDE)} disabled={state.turn!==HUMAN_SIDE||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={HUMAN_SIDE}/>
   </main>
  </div>;
