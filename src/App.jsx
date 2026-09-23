@@ -14,37 +14,22 @@ const AUDIO_FILES=[
  ...["hanna","hiro","margo","nanoka","sherry"].map(name=>`check-${name}.mp3`),
  ...["hanna","margo","nanoka","sherry"].flatMap(name=>[`magic-${name}.mp3`,`promote-${name}.mp3`]),
 ];
-let audioContext=null,audioWarmup=null;
-const audioBuffers=new Map(),fallbackAudio=new Map();
-const getAudioContext=()=>{
- if(typeof window==="undefined")return null;
- const AudioContextClass=window.AudioContext||window.webkitAudioContext;
- if(!AudioContextClass)return null;
- return audioContext||(audioContext=new AudioContextClass());
-};
+const audioCache=new Map();
 const warmAudio=()=>{
- const context=getAudioContext();
- if(!context)return Promise.resolve();
- // Mobile browsers require resume() from a user gesture. Decoding everything
- // before the match prevents MP3 startup latency from trailing the CSS effect.
- context.resume().catch(()=>{});
- if(audioWarmup)return audioWarmup;
- audioWarmup=Promise.allSettled(AUDIO_FILES.map(async file=>{
-  const response=await fetch(`/audio/${file}`);
-  if(!response.ok)throw new Error(`${file}: ${response.status}`);
-  audioBuffers.set(file,await context.decodeAudioData(await response.arrayBuffer()));
- }));
- return audioWarmup;
+ if(typeof Audio==="undefined")return;
+ AUDIO_FILES.forEach(file=>{
+  if(audioCache.has(file))return;
+  const audio=new Audio(`/audio/${file}`);
+  audio.preload="auto";
+  audioCache.set(file,audio);
+  audio.load();
+ });
 };
 const playSound=file=>{
- const context=getAudioContext(),buffer=audioBuffers.get(file);
- if(context&&buffer){
-  if(context.state!=="running")context.resume().catch(()=>{});
-  const source=context.createBufferSource();
-  source.buffer=buffer;source.connect(context.destination);source.start();return;
- }
- const audio=fallbackAudio.get(file)||new Audio(`/audio/${file}`);
- fallbackAudio.set(file,audio);audio.currentTime=0;audio.play().catch(()=>{});
+ const audio=audioCache.get(file)||new Audio(`/audio/${file}`);
+ audioCache.set(file,audio);
+ try{audio.currentTime=0}catch{}
+ audio.play().catch(()=>{});
 };
 const playVoice=event=>playSound(`${event}.mp3`);
 const actionVoiceFor=(action,piece,givesCheck=false)=>{
@@ -107,9 +92,9 @@ export default function App(){
  const legal=useMemo(()=>gameOver?[]:generateAllLegalActions(state),[state,gameOver]);
  const selectable=useMemo(()=>legal.filter(a=>a.category==="drop"?handType!==null&&a.piece.type===handType:selected&&a.from?.[0]===selected[0]&&a.from?.[1]===selected[1]),[legal,selected,handType]);
 
- async function startMatch(){
-  // Wait on the title screen, then begin with every in-game sound decoded.
-  await warmAudio();
+ function startMatch(){
+  // Never make game start or a move wait for audio preparation.
+  warmAudio();
   setHumanSide(randomSide());playSound("match-start.mp3");setStarted(true);
  }
 
