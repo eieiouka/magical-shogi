@@ -5,29 +5,44 @@ import {stateKey} from "./game/aiEngine.js";
 
 const randomSide=()=>Math.random()<.5?"sente":"gote";
 const HAND_ORDER=["sherry","hanna","hiro","nanoka","margo"];
+const DIFFICULTIES=[
+ {label:"簡単",depth:11},
+ {label:"普通",depth:13},
+ {label:"難しい",depth:15},
+];
 const MOBILE_LAYOUT_QUERY="(max-width: 760px) and (hover: none) and (pointer: coarse)";
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
 // Voice files are shared by both sides. The board orientation changes, but the
 // character and line do not, so sente/gote suffixes only duplicated assets.
-const voiceFor=event=>`/audio/${event}.mp3`;
 const activeAudio=new Set();
-let nanokaAudioContext=null,nanokaAudioBufferPromise=null;
-const unlockNanokaSound=()=>{
+const AUDIO_FILES=[
+ "match-start.mp3","victory.mp3","defeat.mp3","try.mp3","arrow.mp3","checkmate.mp3","fall.mp3",
+ ...["sherry","hanna","hiro","margo","nanoka"].flatMap(name=>[`check-${name}.mp3`,`promote-${name}.mp3`,`magic-${name}.mp3`]),
+];
+let sharedAudioContext=null;
+const audioBufferCache=new Map();
+const loadAudioBuffer=file=>{
+ if(audioBufferCache.has(file))return audioBufferCache.get(file);
+ const loading=fetch(`/audio/${file}`,{cache:"force-cache"})
+  .then(response=>{if(!response.ok)throw new Error(`${file}: ${response.status}`);return response.arrayBuffer()})
+  .then(bytes=>sharedAudioContext.decodeAudioData(bytes))
+  .catch(()=>null);
+ audioBufferCache.set(file,loading);
+ return loading;
+};
+const unlockAllSounds=()=>{
  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
  if(!AudioContextClass)return;
- if(!nanokaAudioContext)nanokaAudioContext=new AudioContextClass();
- nanokaAudioContext.resume().catch(()=>{});
- if(!nanokaAudioBufferPromise)nanokaAudioBufferPromise=fetch("/audio/magic-nanoka.mp3",{cache:"force-cache"})
-  .then(response=>{if(!response.ok)throw new Error(`magic-nanoka.mp3: ${response.status}`);return response.arrayBuffer()})
-  .then(bytes=>nanokaAudioContext.decodeAudioData(bytes))
-  .catch(()=>null);
- // The silent buffer starts inside the user's tap and permanently unlocks this
- // AudioContext for later CPU moves on mobile browsers.
- const buffer=nanokaAudioContext.createBuffer(1,1,nanokaAudioContext.sampleRate);
- const source=nanokaAudioContext.createBufferSource();
- source.buffer=buffer;source.connect(nanokaAudioContext.destination);source.start();
+ if(!sharedAudioContext)sharedAudioContext=new AudioContextClass();
+ sharedAudioContext.resume().catch(()=>{});
+ // Start one silent sample inside the user's difficulty-selection tap. This
+ // unlocks the shared context for every later CPU voice, even after a long search.
+ const buffer=sharedAudioContext.createBuffer(1,1,sharedAudioContext.sampleRate);
+ const source=sharedAudioContext.createBufferSource();
+ source.buffer=buffer;source.connect(sharedAudioContext.destination);source.start();
+ AUDIO_FILES.forEach(loadAudioBuffer);
 };
-const playSound=file=>new Promise(resolve=>{
+const playHtmlSound=file=>new Promise(resolve=>{
  const audio=new Audio(`/audio/${file}`);
  activeAudio.add(audio);
  let settled=false;
@@ -39,17 +54,17 @@ const playSound=file=>new Promise(resolve=>{
  audio.addEventListener("error",()=>{finished();started()},{once:true});
  audio.play().catch(()=>{finished();started()});
 });
-const playNanokaMagic=async()=>{
+const playSound=async file=>{
  try{
-  if(!nanokaAudioContext||!nanokaAudioBufferPromise)return playSound("magic-nanoka.mp3");
-  if(nanokaAudioContext.state!=="running")await nanokaAudioContext.resume();
-  const buffer=await nanokaAudioBufferPromise;
-  if(!buffer)return playSound("magic-nanoka.mp3");
-  const source=nanokaAudioContext.createBufferSource();
-  source.buffer=buffer;source.connect(nanokaAudioContext.destination);source.start();
- }catch{return playSound("magic-nanoka.mp3")}
+  if(!sharedAudioContext)return playHtmlSound(file);
+  if(sharedAudioContext.state!=="running")await sharedAudioContext.resume();
+  const buffer=await loadAudioBuffer(file);
+  if(!buffer)return playHtmlSound(file);
+  const source=sharedAudioContext.createBufferSource();
+  source.buffer=buffer;source.connect(sharedAudioContext.destination);source.start();
+ }catch{return playHtmlSound(file)}
 };
-const playVoice=event=>event==="magic-nanoka"?playNanokaMagic():playSound(`${event}.mp3`);
+const playVoice=event=>playSound(`${event}.mp3`);
 const actionVoiceFor=(action,piece,givesCheck=false)=>{
  if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
  if(action.category==="drop")return null;
@@ -85,6 +100,19 @@ function Hand({className,title,pieces,activeType,onPick,disabled,perspective,rev
  </aside>;
 }
 
+function DifficultyDialog({onChoose,onCancel}){
+ return <div className="difficulty-overlay" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onCancel()}}>
+  <section className="difficulty-dialog" role="dialog" aria-modal="true" aria-labelledby="difficulty-title">
+   <h2 id="difficulty-title">難易度を選択</h2>
+   <div className="difficulty-options">{DIFFICULTIES.map(item=><button key={item.depth} type="button" onClick={()=>onChoose(item.depth)}>
+    <strong>{item.label}</strong>
+   </button>)}</div>
+   <p>※難易度が高いほど、処理が重くなります</p>
+   <button className="difficulty-cancel" type="button" onClick={onCancel}>戻る</button>
+  </section>
+ </div>;
+}
+
 export default function App(){
  const initial=useMemo(()=>makeInitialState(),[]);
  const [started,setStarted]=useState(false);
@@ -100,6 +128,8 @@ export default function App(){
  const [resultRevealReady,setResultRevealReady]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
  const [audioSyncing,setAudioSyncing]=useState(false);
+ const [difficultyDepth,setDifficultyDepth]=useState(15);
+ const [difficultyPrompt,setDifficultyPrompt]=useState(null);
  const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
  const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),resultVoicePlayed=useRef(false);
  const state=timeline[timeline.length-1];
@@ -162,7 +192,7 @@ export default function App(){
  },[result,finishFxDone,humanSide]);
  useEffect(()=>{
   if(!started||gameOver||!worker.current)return;
-  if(state.turn===humanSide){worker.current.postMessage({type:"ponder",state,seen});return}
+  if(state.turn===humanSide){worker.current.postMessage({type:"ponder",state,seen,minDepth:difficultyDepth});return}
   setThinking(true);
   const id=++request.current;
   const effectEndsAt=Math.max(performance.now(),motionFxRef.current?.endsAt??0);
@@ -181,8 +211,8 @@ export default function App(){
    waitForFx();
   };
   const effectRemainingMs=Math.max(0,effectEndsAt-performance.now());
-  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000});
- },[state,gameOver,seen,humanSide,started]);
+  worker.current.postMessage({type:"think",id,state,seen,timeLimitMs:effectRemainingMs+1000,minDepth:difficultyDepth});
+ },[state,gameOver,seen,humanSide,started,difficultyDepth]);
 
  async function commitAction(action,before){
   setAudioSyncing(true);
@@ -212,13 +242,13 @@ export default function App(){
   setAudioSyncing(false);
   setThinking(false);setSelected(null);setHandType(null);setResigned(true);
  }
- async function reset(){
-  if(!gameOver)return;
+ async function startNewMatch(depth){
   request.current++;
   worker.current?.postMessage({type:"reset"});
+  unlockAllSounds();
   setAudioSyncing(true);
   await playSound("match-start.mp3");
-  motionFxRef.current=null;resultVoicePlayed.current=false;setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setAudioSyncing(false);
+  motionFxRef.current=null;resultVoicePlayed.current=false;setDifficultyDepth(depth);setDifficultyPrompt(null);setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setStarted(true);setAudioSyncing(false);
  }
  async function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
@@ -317,22 +347,24 @@ export default function App(){
 
  if(!started)return <main className="title-screen">
   <div className="title-screen__shade" aria-hidden="true"/>
-  <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
-  <div className="title-screen__actions">
-   <button className="title-screen__start" onClick={async()=>{unlockNanokaSound();await playSound("match-start.mp3");setHumanSide(randomSide());setStarted(true)}}>ゲーム開始</button>
+ <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
+ <div className="title-screen__actions">
+   <button className="title-screen__start" onClick={()=>setDifficultyPrompt("start")}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">リアル駒が欲しい！</a>
   </div>
+  {difficultyPrompt&&<DifficultyDialog onChoose={startNewMatch} onCancel={()=>setDifficultyPrompt(null)}/>} 
  </main>;
 
  return <div className="app-shell">
   <header className="topbar">
    <div className="branding"><div className="eyebrow">MANOSABA SHOGI AI</div><h1>魔法少女ノ魔法将棋</h1></div>
-   <div className="match-actions"><button className="rematch-button" onClick={reset} disabled={!canRematch}>再対局</button><button className="resign-button" onClick={resign} disabled={gameOver}>投了</button></div>
+   <div className="match-actions"><button className="rematch-button" onClick={()=>setDifficultyPrompt("rematch")} disabled={!canRematch}>再対局</button><button className="resign-button" onClick={resign} disabled={gameOver}>投了</button></div>
   </header>
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(opponentSide)} disabled activeType={null} onPick={()=>{}} perspective={humanSide} reverse/>
-   <div className="board-frame"><div className="board-container"><div className="board">{visualCells.map(({row:r,column:c})=>{const key=`${r},${c}`,piece=state.board[r][c],target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} perspective={humanSide} promotedOverride={promotedOverride}/></div>}</button>})}</div>{motionFx?.captured&&captureVisual&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${captureVisual[1]*100/6}%`,top:`${captureVisual[0]*100/6}%`,...captureDestination,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}} perspective={humanSide}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(shotFrom[1]+.5)*100} y1={(shotFrom[0]+.5)*100} x2={(shotTo[1]+.5)*100} y2={(shotTo[0]+.5)*100} pathLength="1"/><circle cx={(shotTo[1]+.5)*100} cy={(shotTo[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(tryFrom[1]+.5)*100} y1={(tryFrom[0]+.5)*100} x2={(tryTo[1]+.5)*100} y2={(tryTo[0]+.5)*100} pathLength="1"/></svg>}{endMessage&&<div className={`result-overlay ${endMessage.startsWith("勝利")?"result-overlay--win":"result-overlay--lose"}`} role="status"><div className="result-overlay__panel"><div className="result-overlay__text">{endMessage}</div><button className="result-overlay__again" onClick={reset}>もう一回</button></div></div>}</div></div>
+   <div className="board-frame"><div className="board-container"><div className="board">{visualCells.map(({row:r,column:c})=>{const key=`${r},${c}`,piece=state.board[r][c],target=targets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} perspective={humanSide} promotedOverride={promotedOverride}/></div>}</button>})}</div>{motionFx?.captured&&captureVisual&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${captureVisual[1]*100/6}%`,top:`${captureVisual[0]*100/6}%`,...captureDestination,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}} perspective={humanSide}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(shotFrom[1]+.5)*100} y1={(shotFrom[0]+.5)*100} x2={(shotTo[1]+.5)*100} y2={(shotTo[0]+.5)*100} pathLength="1"/><circle cx={(shotTo[1]+.5)*100} cy={(shotTo[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(tryFrom[1]+.5)*100} y1={(tryFrom[0]+.5)*100} x2={(tryTo[1]+.5)*100} y2={(tryTo[0]+.5)*100} pathLength="1"/></svg>}{endMessage&&<div className={`result-overlay ${endMessage.startsWith("勝利")?"result-overlay--win":"result-overlay--lose"}`} role="status"><div className="result-overlay__panel"><div className="result-overlay__text">{endMessage}</div><button className="result-overlay__again" onClick={()=>setDifficultyPrompt("rematch")}>もう一回</button></div></div>}</div></div>
    <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||audioSyncing||gameOver} activeType={handType} onPick={type=>{setHandType(type);setSelected(null)}} perspective={humanSide}/>
   </main>
+  {difficultyPrompt&&<DifficultyDialog onChoose={startNewMatch} onCancel={()=>setDifficultyPrompt(null)}/>} 
  </div>;
 }

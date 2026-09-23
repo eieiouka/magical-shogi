@@ -16,7 +16,7 @@ const fairyReady=(async()=>{
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const contentType=response.headers.get("content-type")||"";
     if(!/javascript|ecmascript/.test(contentType))throw new Error("Fairy-Stockfish artifact is not built");
-    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js?v=worker-v23",self.location.origin));
+    fairyWorker=new Worker(new URL("/fairy/fairy-bridge.worker.js?v=worker-v24-difficulty",self.location.origin));
     fairyWorker.onmessage=({data})=>{
       if(data.type==="ready"){fairyPending.get("ready")?.resolve();fairyPending.delete("ready");return}
       if(data.type==="error"&&data.id==null&&fairyPending.has("ready")){
@@ -54,12 +54,12 @@ const wasmReady=(async()=>{
 
 async function runEngine(state,seen,target,timeLimitMs,minDepth,selectiveDepth=0,log=true){
   if(await fairyReady){
-    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=15 budget=${timeLimitMs}ms`);
+    if(log)console.info(`[魔法将棋AI] search start engine=fairy-stockfish minDepth=${minDepth} budget=${timeLimitMs}ms`);
     const id=++fairySequence;
     const result=await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{fairyPending.delete(id);reject(new Error("Fairy-Stockfish search timeout"))},Math.max(120000,timeLimitMs+10000));
       fairyPending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});
-      fairyWorker.postMessage({type:"search",id,fen:stateToFairyFen(state),timeLimitMs,maxDepth:target});
+      fairyWorker.postMessage({type:"search",id,fen:stateToFairyFen(state),timeLimitMs,maxDepth:target,minDepth});
     });
     return {action:fairyMoveToAction(state,result.bestmove),score:result.score,depth:result.depth,nodes:result.nodes,engine:"fairy-stockfish",proven:Math.abs(result.score)>=19000};
   }
@@ -93,8 +93,9 @@ self.onmessage=async({data})=>{
   try{
     const targetDepth=UNBOUNDED_DEPTH;
     const timeLimitMs=Math.max(500,data.timeLimitMs??500);
+    const minDepth=Math.max(1,Math.min(31,Math.trunc(Number(data.minDepth)||15)));
     const startedAt=performance.now();
-    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,7,0);
+    const result=await runEngine(data.state,data.seen,targetDepth,timeLimitMs,minDepth,0);
     const elapsed=Math.max(1,performance.now()-startedAt);
     const nps=result?.nodes?Math.round(result.nodes*1000/elapsed):"?";
     console.info(`[魔法将棋AI] engine=${result?.engine??"javascript"} depth=${result?.depth??"?"} nodes=${result?.nodes??"?"} elapsed=${Math.round(elapsed)}ms nps=${nps}`);

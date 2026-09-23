@@ -4,7 +4,7 @@ let ready=null;
 let active=null;
 let queued=null;
 let sequence=0;
-const MIN_DEPTH=15;
+const DEFAULT_MIN_DEPTH=15;
 
 function emit(type,extra={}){self.postMessage({type,...extra})}
 
@@ -70,7 +70,7 @@ function onLine(raw){
 function stopWhenReady(){
   if(!active||active.cancelled||active.stopSent)return;
   const timeReached=performance.now()-active.started>=active.budget;
-  if(timeReached&&active.depth>=MIN_DEPTH){
+  if(timeReached&&active.depth>=active.minDepth){
     active.stopSent=true;
     engine.postMessage("stop");
   }
@@ -85,7 +85,8 @@ async function search(data){
 function beginSearch(data){
   const id=data.id??++sequence;
   const budget=Math.max(1,Number(data.timeLimitMs||1000));
-  active={id,fen:data.fen,budget,maxDepth:Math.max(MIN_DEPTH,data.maxDepth||253),depth:0,nodes:0,score:0,started:performance.now(),cancelled:false,stopSent:false,budgetTimer:null};
+  const minDepth=Math.max(1,Math.min(31,Math.trunc(Number(data.minDepth)||DEFAULT_MIN_DEPTH)));
+  active={id,fen:data.fen,budget,minDepth,maxDepth:Math.max(minDepth,data.maxDepth||253),depth:0,nodes:0,score:0,started:performance.now(),cancelled:false,stopSent:false,budgetTimer:null};
   active.budgetTimer=setTimeout(stopWhenReady,budget);
   engine.postMessage(`position fen ${data.fen}`);
   engine.postMessage(`go depth ${active.maxDepth}`);
