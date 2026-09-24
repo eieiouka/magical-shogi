@@ -89,14 +89,32 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   font-family:inherit; font-size:clamp(13px,1.8vw,19px); font-weight:900; letter-spacing:.08em; text-align:center; text-decoration:none;
   box-shadow:0 6px 20px rgba(0,0,0,.55),0 0 14px rgba(255,255,255,.12); cursor:pointer;
 }
+.result-overlay__again {
+  border:2px solid #f5deb0;
+  background:linear-gradient(135deg,#fff0c9 0%,#d9ad66 48%,#a87537 100%);
+  color:#21150a;
+  text-shadow:0 1px 1px rgba(255,255,255,.28);
+}
 .result-overlay__again:hover,.result-overlay__friend:hover { filter:brightness(1.18); transform:translateY(-2px); }
 .result-overlay::before { content:""; position:absolute; inset:25% 5%; z-index:-1; background:rgba(6,6,8,.76); border-top:1px solid currentColor; border-bottom:1px solid currentColor; box-shadow:0 0 30px rgba(0,0,0,.72); }
 .result-overlay--win { color:#ffe49a; }
 .result-overlay--lose { color:#d8d6df; }
 @keyframes result-appear { from { opacity:0; transform:scale(.72); filter:blur(7px); } to { opacity:1; transform:scale(1); filter:blur(0); } }
 @media (max-width:760px) and (hover:none) and (pointer:coarse) {
-  .result-overlay__actions { width:94%; gap:2vw; }
-  .result-overlay__again,.result-overlay__friend { min-width:0; width:50%; padding:2.5vw 1vw; font-size:3.2vw; white-space:nowrap; }
+  .result-overlay__actions {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    width:150%;
+    gap:2vw;
+  }
+  .result-overlay__again,.result-overlay__friend {
+    min-width:0;
+    width:100%;
+    padding:2.5vw .8vw;
+    font-size:clamp(11px,3.1vw,15px);
+    letter-spacing:.035em;
+    white-space:nowrap;
+  }
 }
 
 .game-stage {
