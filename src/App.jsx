@@ -92,7 +92,7 @@ export default function App(){
  const [pieceGuide,setPieceGuide]=useState(null);
  const [showHowTo,setShowHowTo]=useState(false);
  const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
- const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0);
+ const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),backgroundMusic=useRef(null);
  const guideTimer=useRef(null),guideTriggered=useRef(false);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
@@ -117,6 +117,7 @@ export default function App(){
  },[guideActions]);
 
  useEffect(()=>{worker.current=new Worker(new URL("./game/ai.worker.js",import.meta.url),{type:"module"});return()=>worker.current?.terminate()},[]);
+ useEffect(()=>()=>{backgroundMusic.current?.pause();backgroundMusic.current=null},[]);
  useEffect(()=>{
   const query=window.matchMedia(MOBILE_LAYOUT_QUERY);
   const update=()=>setMobileLayout(query.matches);
@@ -227,6 +228,13 @@ export default function App(){
  async function startNewMatch(depth){
   request.current++;
   worker.current?.postMessage({type:"reset"});
+  if(!backgroundMusic.current){
+   backgroundMusic.current=new Audio("/audio/Halloween_Waltz.mp3");
+   backgroundMusic.current.loop=true;
+  }
+  backgroundMusic.current.volume = 0.3; // 30%
+  backgroundMusic.current.currentTime=0;
+  backgroundMusic.current.play().catch(error=>console.error("BGMの再生に失敗しました:",error));
   motionFxRef.current=null;setDifficultyDepth(depth);setDifficultyPrompt(null);setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setStarted(true);
  }
  async function beginMotion(action,before){
