@@ -86,7 +86,7 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
 .result-overlay__again,.result-overlay__friend {
   min-width:clamp(150px,24vw,230px); padding:clamp(10px,1.5vw,15px) clamp(20px,3vw,34px);
   border:1px solid currentColor; border-radius:999px; background:rgba(12,11,14,.88); color:inherit;
-  font-family:inherit; font-size:clamp(13px,1.8vw,19px); font-weight:900; letter-spacing:.08em; text-align:center; text-decoration:none;
+  font-family:inherit; font-size:clamp(16.5px,4.65vw,22.5px); font-weight:900; letter-spacing:.08em; text-align:center; text-decoration:none;
   box-shadow:0 6px 20px rgba(0,0,0,.55),0 0 14px rgba(255,255,255,.12); cursor:pointer;
 }
 .result-overlay__again {
