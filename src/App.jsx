@@ -20,70 +20,6 @@ const PIECE_GUIDES={
 };
 const MOBILE_LAYOUT_QUERY="(max-width: 760px) and (hover: none) and (pointer: coarse)";
 const imageFor=p=>`/images/pieces/${p.type}_${p.promoted?"red":"black"}.png`;
-// Voice files are shared by both sides. The board orientation changes, but the
-// character and line do not, so sente/gote suffixes only duplicated assets.
-const activeAudio=new Set();
-let sharedAudioContext=null;
-const audioBufferCache=new Map();
-const loadAudioBuffer=file=>{
- if(audioBufferCache.has(file))return audioBufferCache.get(file);
- const loading=fetch(`/audio/${file}`,{cache:"force-cache"})
-  .then(response=>{if(!response.ok)throw new Error(`${file}: ${response.status}`);return response.arrayBuffer()})
-  .then(bytes=>sharedAudioContext.decodeAudioData(bytes))
-  .catch(()=>null);
- audioBufferCache.set(file,loading);
- return loading;
-};
-const unlockAllSounds=()=>{
- const AudioContextClass=window.AudioContext||window.webkitAudioContext;
- if(!AudioContextClass)return;
- if(!sharedAudioContext)sharedAudioContext=new AudioContextClass();
- sharedAudioContext.resume().catch(()=>{});
- // Start one silent sample inside the user's difficulty-selection tap. This
- // unlocks the shared context for every later CPU voice, even after a long search.
- const buffer=sharedAudioContext.createBuffer(1,1,sharedAudioContext.sampleRate);
- const source=sharedAudioContext.createBufferSource();
- source.buffer=buffer;source.connect(sharedAudioContext.destination);source.start();
-};
-const playHtmlSound=file=>new Promise(resolve=>{
- const audio=new Audio(`/audio/${file}`);
- activeAudio.add(audio);
- let settled=false;
- const started=()=>{if(settled)return;settled=true;clearTimeout(fallback);resolve()};
- const finished=()=>activeAudio.delete(audio);
- const fallback=setTimeout(started,1500);
- audio.addEventListener("playing",started,{once:true});
- audio.addEventListener("ended",finished,{once:true});
- audio.addEventListener("error",()=>{finished();started()},{once:true});
- audio.play().catch(()=>{finished();started()});
-});
-const playSound=async file=>{
- try{
-  if(!sharedAudioContext)return playHtmlSound(file);
-  if(sharedAudioContext.state!=="running")await sharedAudioContext.resume();
-  const buffer=await loadAudioBuffer(file);
-  if(!buffer)return playHtmlSound(file);
-  const source=sharedAudioContext.createBufferSource();
-  source.buffer=buffer;source.connect(sharedAudioContext.destination);source.start();
- }catch{return playHtmlSound(file)}
-};
-const playVoice=event=>playSound(`${event}.mp3`);
-const actionVoiceFor=(action,piece,givesCheck=false)=>{
- if(givesCheck&&piece.type!=="ema")return`check-${piece.type}`;
- if(action.category==="drop")return null;
- if(piece.type==="ema")return null;
- // Sherry's two-square advance is her magic. Her diagonal capture is silent,
- // except when that move also promotes. Promotion wins over a simultaneous rush.
- if(piece.type==="sherry"){
-  if(action.longForward&&action.promote)return"promote-sherry";
-  if(action.longForward)return"magic-sherry";
-  if(action.promote)return"promote-sherry";
-  return null;
- }
- if(action.promote)return`promote-${piece.type}`;
- if(action.magic)return`magic-${piece.type}`;
- return null;
-};
 
 function Piece({piece,compact=false,perspective="sente",forcePromoted=false,promotedOverride}){
  let shownPiece=promotedOverride===undefined?piece:{...piece,promoted:promotedOverride};
@@ -151,13 +87,12 @@ export default function App(){
  const [finishFxDone,setFinishFxDone]=useState(false);
  const [resultRevealReady,setResultRevealReady]=useState(false);
  const [motionFx,setMotionFx]=useState(null);
- const [audioSyncing,setAudioSyncing]=useState(false);
  const [difficultyDepth,setDifficultyDepth]=useState(15);
  const [difficultyPrompt,setDifficultyPrompt]=useState(null);
  const [pieceGuide,setPieceGuide]=useState(null);
  const [showHowTo,setShowHowTo]=useState(false);
  const [mobileLayout,setMobileLayout]=useState(()=>typeof window!=="undefined"&&window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
- const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0),resultVoicePlayed=useRef(false);
+ const worker=useRef(null),request=useRef(0),motionFxRef=useRef(null),motionSequence=useRef(0);
  const guideTimer=useRef(null),guideTriggered=useRef(false);
  const state=timeline[timeline.length-1];
  const result=useMemo(()=>terminalResult(state),[state]);
@@ -195,30 +130,27 @@ export default function App(){
   const losingSide=result.winner===humanSide?opponentSide:humanSide;
   const timers=[];let cancelled=false;
   const wait=ms=>new Promise(resolve=>timers.push(setTimeout(resolve,ms)));
-  const syncPhase=async(voice,phase)=>{
-   await playVoice(voice);
-   if(!cancelled)setFinishFx(phase);
-  };
+  const syncPhase=phase=>{if(!cancelled)setFinishFx(phase)};
   setFinishFxDone(false);
   setResultRevealReady(false);
   const run=async()=>{
    if(result.reason==="ema-safe-try"){
-    await syncPhase("try",{phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
+    syncPhase({phase:"try-transform",winner:result.winner,losingSide,promotionRevealed:false});
     if(cancelled)return;
     await wait(600);if(cancelled)return;
     setFinishFx(current=>current?.phase==="try-transform"?{...current,promotionRevealed:true}:current);
     await wait(2000);if(cancelled)return;
-    await syncPhase("arrow",{phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});
+    syncPhase({phase:"try-arrow",winner:result.winner,losingSide,promotionRevealed:true});
     await wait(1400);if(cancelled)return;
-    await syncPhase("checkmate",{phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});
+    syncPhase({phase:"loser-shake",winner:result.winner,losingSide,promotionRevealed:true});
     await wait(1400);if(cancelled)return;
-    await syncPhase("fall",{phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});
+    syncPhase({phase:"loser-fall",winner:result.winner,losingSide,promotionRevealed:true});
     await wait(1500);if(cancelled)return;
     setFinishFx({phase:"done",winner:result.winner,losingSide,promotionRevealed:true});setFinishFxDone(true);
    }else{
-    await syncPhase("checkmate",{phase:"loser-shake",winner:result.winner,losingSide});
+    syncPhase({phase:"loser-shake",winner:result.winner,losingSide});
     await wait(1300);if(cancelled)return;
-    await syncPhase("fall",{phase:"loser-fall",winner:result.winner,losingSide});
+    syncPhase({phase:"loser-fall",winner:result.winner,losingSide});
     await wait(1400);if(cancelled)return;
     setFinishFx({phase:"done",winner:result.winner,losingSide});setFinishFxDone(true);
    }
@@ -227,9 +159,9 @@ export default function App(){
   return()=>{cancelled=true;timers.forEach(clearTimeout)};
  },[result,motionFx,humanSide,opponentSide]);
  useEffect(()=>{
-  if(!result||!finishFxDone||resultVoicePlayed.current)return;
-  resultVoicePlayed.current=true;
-  const timer=setTimeout(async()=>{await playSound(result.winner===humanSide?"victory.mp3":"defeat.mp3");setResultRevealReady(true)},1000);
+  if(!result||!finishFxDone)return;
+  
+  const timer=setTimeout(()=>setResultRevealReady(true),1000);
   return()=>clearTimeout(timer);
  },[result,finishFxDone,humanSide]);
  useEffect(()=>{
@@ -257,18 +189,16 @@ export default function App(){
  },[state,gameOver,seen,humanSide,started,difficultyDepth]);
 
  async function commitAction(action,before){
-  setAudioSyncing(true);
   await beginMotion(action,before);
   setTimeline(x=>[...x,applyLegalAction(x[x.length-1],action)]);
-  setAudioSyncing(false);
  }
  function play(action){
-  if(thinking||motionFx||audioSyncing||state.turn!==humanSide||gameOver)return;
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
   commitAction(action,state);
   setSelected(null);setHandType(null);
  }
  function beginPieceGuide(piece,row,col){
-  if(!piece||motionFx||audioSyncing)return;
+  if(!piece||motionFx)return;
   clearTimeout(guideTimer.current);guideTriggered.current=false;
   guideTimer.current=setTimeout(()=>{
    guideTriggered.current=true;
@@ -281,7 +211,7 @@ export default function App(){
  function click(row,col){
   if(guideTriggered.current){guideTriggered.current=false;return}
   if(pieceGuide){setPieceGuide(null);return}
-  if(thinking||motionFx||audioSyncing||state.turn!==humanSide||gameOver)return;
+  if(thinking||motionFx||state.turn!==humanSide||gameOver)return;
   const choices=selectable.filter(a=>a.to[0]===row&&a.to[1]===col);
   if(choices.length){play(choices.find(a=>a.magic)||choices[0]);return}
   const piece=state.board[row][col];
@@ -291,34 +221,19 @@ export default function App(){
   if(gameOver)return;
   request.current++;
  worker.current?.postMessage({type:"reset"});
-  resultVoicePlayed.current=true;
-  setAudioSyncing(true);
-  await playSound("defeat.mp3");
-  setAudioSyncing(false);
+  
   setThinking(false);setSelected(null);setHandType(null);setResigned(true);
  }
  async function startNewMatch(depth){
   request.current++;
   worker.current?.postMessage({type:"reset"});
-  unlockAllSounds();
-  setAudioSyncing(true);
-  await playSound("match-start.mp3");
-  motionFxRef.current=null;resultVoicePlayed.current=false;setDifficultyDepth(depth);setDifficultyPrompt(null);setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setStarted(true);setAudioSyncing(false);
+  motionFxRef.current=null;setDifficultyDepth(depth);setDifficultyPrompt(null);setHumanSide(randomSide());setTimeline([makeInitialState()]);setSelected(null);setHandType(null);setThinking(false);setResigned(false);setFinishFx(null);setFinishFxDone(false);setResultRevealReady(false);setMotionFx(null);setStarted(true);
  }
  async function beginMotion(action,before){
   const moving=action.category==="drop"?action.piece:before.board[action.from[0]][action.from[1]];
-  const after=applyLegalAction(before,action);
-  const moveResult=terminalResult(after);
-  const givesCheck=!moveResult&&isEmmaInCheck(after,after.turn);
   const captureAt=action.swap?null:action.captureAt??(before.board[action.to[0]][action.to[1]]?[...action.to]:null);
   const captured=captureAt?before.board[captureAt[0]][captureAt[1]]:null;
-  // A terminal win owns the voice channel. Do not overlap its checkmate/try
-  // sequence with promotion or magic voices from the winning move.
   const isNanokaShot=Boolean(moving?.type==="nanoka"&&action.magic==="銃撃"&&captured&&captureAt);
-  const actionVoice=moving&&!moveResult?actionVoiceFor(action,moving,givesCheck):null;
-  const sounds=[];
-  if(actionVoice)sounds.push(playVoice(actionVoice));
-  if(sounds.length)await Promise.all(sounds);
   const impactDelay=isNanokaShot?320:0;
   const duration=isNanokaShot?1050:captured?720:action.category==="drop"?470:550;
   const id=++motionSequence.current;
@@ -418,7 +333,7 @@ export default function App(){
   <main className="game-stage">
    <Hand className="hand--opponent" title="相手の持ち駒" pieces={visibleHand(opponentSide)} disabled activeType={null} onPick={()=>{}} perspective={humanSide} reverse onGuideStart={beginPieceGuide} onGuideEnd={endPieceGuide}/>
    <div className="board-stack"><div className="board-frame"><div className="board-container"><div className="board">{visualCells.map(({row:r,column:c})=>{const key=`${r},${c}`,piece=state.board[r][c],target=targets.get(key),guideTarget=guideTargets.get(key),pendingCaptured=motionFx?.isNanokaShot&&!motionFx.impactReached&&motionFx.captureAt?.[0]===r&&motionFx.captureAt?.[1]===c?{...motionFx.captured,side:motionFx.capturedOriginalSide}:null,shownPiece=piece??pendingCaptured,fxClass=pieceFxClass(shownPiece),moveClass=motionClass(shownPiece,r,c),checkClass=shownPiece?.type==="ema"&&shownPiece.side===checkedSide?" ema--in-check":"",tryWinner=Boolean(shownPiece?.type==="ema"&&result?.reason==="ema-safe-try"&&shownPiece.side===result.winner),moveStyle=motionStyle(r,c,moveClass),promotedOverride=tryWinner?finishFx?.promotionRevealed===true:moveClass&&motionFx?.action.promote?Boolean(motionFx.promotionRevealed):undefined;return <button key={key} onClick={()=>click(r,c)} onPointerDown={()=>beginPieceGuide(piece,r,c)} onPointerUp={endPieceGuide} onPointerCancel={endPieceGuide} onPointerLeave={endPieceGuide} onContextMenu={event=>event.preventDefault()} className={`square ${(r+c)%2?"square--alt":""} ${selected?.[0]===r&&selected?.[1]===c?"square--selected":""} ${target?((target.category==="magic"||target.longForward)?"square--magic-target":"square--move-target"):""} ${pieceGuide?.row===r&&pieceGuide?.col===c?"square--guide-source":""} ${guideTarget?`square--guide-${guideTarget}`:""} ${(fxClass||moveClass)?"square--finish-fx":""}`}>{shownPiece&&<div style={moveStyle} className={`finish-piece${fxClass}${moveClass}${checkClass}${moveClass&&motionFx?.action.promote?" motion-promote":""}`}><Piece piece={shownPiece} perspective={humanSide} promotedOverride={promotedOverride}/></div>}</button>})}</div>{motionFx?.captured&&captureVisual&&(!motionFx.isNanokaShot||motionFx.impactReached)&&<div className={`capture-fly capture-fly--${motionFx.mover}`} style={{left:`${captureVisual[1]*100/6}%`,top:`${captureVisual[0]*100/6}%`,...captureDestination,"--capture-delay":`${motionFx.impactDelay||0}ms`}}><Piece piece={{...motionFx.captured,side:motionFx.capturedOriginalSide,promoted:false}} perspective={humanSide}/></div>}{showNanokaShot&&<svg className="nanoka-shot" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="nanoka-shot-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(shotFrom[1]+.5)*100} y1={(shotFrom[0]+.5)*100} x2={(shotTo[1]+.5)*100} y2={(shotTo[0]+.5)*100} pathLength="1"/><circle cx={(shotTo[1]+.5)*100} cy={(shotTo[0]+.5)*100} r="15"/></svg>}{showTryArrow&&<svg className="try-arrow" viewBox="0 0 600 600" aria-hidden="true"><defs><filter id="arrow-glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><line x1={(tryFrom[1]+.5)*100} y1={(tryFrom[0]+.5)*100} x2={(tryTo[1]+.5)*100} y2={(tryTo[0]+.5)*100} pathLength="1"/></svg>}{endMessage&&<div className={`result-overlay ${endMessage.startsWith("勝利")?"result-overlay--win":"result-overlay--lose"}`} role="status"><div className="result-overlay__panel"><div className="result-overlay__text">{endMessage}</div><div className="result-overlay__actions"><button className="result-overlay__again" onClick={()=>setDifficultyPrompt("rematch")}>再対局</button><a className="result-overlay__friend" href="https://noplannanoka.booth.pm/items/8824608" target="_blank" rel="noreferrer">友達と対戦</a></div></div></div>}</div></div><p className="board-note">桜羽エマを取られたら負けです。桜羽エマが成ると特殊勝利できます。<br/>エマだけは敵陣最下段、他の駒は敵陣二段目に移動すると魔女化します。<br/>取った駒は打てますが、敵陣最下段には打てません。<br/>長押しで駒の能力を見れます。</p></div>
-   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||audioSyncing||gameOver} activeType={handType} onPick={type=>{if(guideTriggered.current){guideTriggered.current=false;return}if(pieceGuide){setPieceGuide(null);return}setHandType(type);setSelected(null)}} perspective={humanSide} onGuideStart={beginPieceGuide} onGuideEnd={endPieceGuide}/>
+   <Hand className="hand--player" title="自分の持ち駒" pieces={visibleHand(humanSide)} disabled={state.turn!==humanSide||thinking||motionFx||gameOver} activeType={handType} onPick={type=>{if(guideTriggered.current){guideTriggered.current=false;return}if(pieceGuide){setPieceGuide(null);return}setHandType(type);setSelected(null)}} perspective={humanSide} onGuideStart={beginPieceGuide} onGuideEnd={endPieceGuide}/>
    <button className="how-to-button" type="button" onClick={()=>setShowHowTo(true)}>How to play</button>
   </main>
   {pieceGuide&&<PieceGuide piece={pieceGuide.piece} onClose={()=>setPieceGuide(null)}/>} 
