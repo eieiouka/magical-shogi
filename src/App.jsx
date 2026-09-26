@@ -325,7 +325,7 @@ export default function App(){
 
  if(!started)return <main className="title-screen">
   <div className="title-screen__shade" aria-hidden="true"/>
- <h2 className="title-screen__logo">魔法少女ノ魔法将棋</h2>
+ <h2 className="title-screen__logo"><span style={{display:"block",fontSize:"50%",lineHeight:1.5}}>【非公式ゲーム作品】</span>魔法少女ノ魔法将棋</h2>
  <div className="title-screen__actions">
    <button className="title-screen__start" onClick={()=>setDifficultyPrompt("start")}>ゲーム開始</button>
    <a className="title-screen__shop" href="https://nanochan-portal.vercel.app/" target="_blank" rel="noreferrer">Portalに戻る</a>

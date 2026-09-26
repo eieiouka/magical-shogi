@@ -36,6 +36,14 @@ button { font: inherit; }
   text-shadow:0 .075em .06em #000,0 0 .18em #000,0 0 .42em rgba(238,183,91,.72);
   pointer-events:none;
 }
+.title-screen__notice {
+  position:absolute; z-index:2; left:50%; top:calc(50% + var(--title-logo-y) - 4vw); transform:translate(-50%,-50%);
+  width:94vw; margin:0; text-align:center; white-space:nowrap;
+  font-family:"Yu Mincho","Hiragino Mincho ProN","HGS明朝E","Noto Serif JP",serif;
+  font-size:2.4vw; font-weight:800; letter-spacing:.075em; color:#fff2ce;
+  text-shadow:0 2px 5px #000,0 0 12px #000;
+  pointer-events:none;
+}
 .title-screen__actions {
   position: absolute; z-index: 1; left: 50%; top: calc(50% + var(--title-actions-y)); transform: translate(-50%,-50%);
   width: 40vw; display: grid; gap: 1.35vw;
@@ -295,6 +303,7 @@ h1 { margin: 3px 0 0; font-family: Georgia, "Noto Serif JP", serif; font-size: c
   .piece-name,.piece--compact .piece-name { font-size: clamp(6px,1.25vw,10px); }
   .title-screen { --title-logo-y:-56vw; --title-actions-y:56vw; }
   .title-screen__logo { font-size:9vw; letter-spacing:.06em; }
+  .title-screen__notice { top:calc(50% + var(--title-logo-y) - 8vw); font-size:4.5vw; letter-spacing:.06em; }
   .title-screen__actions { width:86vw; gap:2.5vw; }
   .title-screen__start,.title-screen__shop { min-height:14vw; padding:3vw 4.5vw; border-radius:3vw; font-size:4.4vw; letter-spacing:.08em; }
 }
